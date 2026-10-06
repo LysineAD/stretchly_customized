@@ -1,18 +1,25 @@
 import 'chai/register-should'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { JSDOM } from 'jsdom'
 
 let sanitizeIdea
 let documentRef
+let dom
 
 describe('sanitizeIdea', () => {
   beforeAll(async () => {
-    const { window } = new JSDOM('', { url: 'https://example.com' })
-    global.window = window
-    global.document = window.document
-    global.Node = window.Node
+    dom = new JSDOM('', { url: 'https://example.com' })
+    const { window } = dom
+    vi.stubGlobal('window', window)
+    vi.stubGlobal('document', window.document)
+    vi.stubGlobal('Node', window.Node)
     documentRef = window.document
     sanitizeIdea = (await import('../app/utils/sanitizeIdea.js')).default
+  })
+
+  afterAll(() => {
+    dom.window.close()
+    vi.unstubAllGlobals()
   })
 
   it('keeps allowed markup intact', () => {

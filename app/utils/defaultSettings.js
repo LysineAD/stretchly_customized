@@ -43,6 +43,8 @@ export default {
   miniBreakAudio: 'crystal-glass',
   volume: 1,
   fullscreen: false,
+  compactBreaks: false,
+  breakClickThrough: false,
   ideas: true,
   naturalBreaks: true,
   naturalBreaksInactivityResetTime: 300000,

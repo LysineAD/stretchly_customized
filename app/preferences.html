@@ -56,10 +56,16 @@
       <span data-i18next="preferences.settings.showBreaksIn"></span>
     </div>
     <div>
-      <input type="radio" value="false" name="fullscreen" id="window">
+      <input type="radio" value="window" name="breakDisplayMode" id="window">
       <label data-i18next="preferences.settings.window" for="window"></label>
-      <input type="radio" value="true" name="fullscreen" id="fullscreen">
+      <input type="radio" value="fullscreen" name="breakDisplayMode" id="fullscreen">
       <label data-i18next="preferences.settings.fullscreen" for="fullscreen"></label>
+      <input type="radio" value="compact" name="breakDisplayMode" id="compact">
+      <label data-i18next="preferences.settings.compact" for="compact"></label>
+    </div>
+    <div>
+      <input type="checkbox" value="breakClickThrough" id="breakClickThrough">
+      <label data-i18next="preferences.settings.clickThrough" for="breakClickThrough"></label>
     </div>
     <div>
       <input type="checkbox" value="ideas" id="showIdeas">

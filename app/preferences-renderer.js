@@ -3,6 +3,7 @@ import { setSameWidths } from './utils/sameWidths.js'
 import HtmlTranslate from './utils/htmlTranslate.js'
 
 import './platform.js'
+import { getBreakDisplayMode } from './utils/breakDisplaySettings.js'
 
 const versionChecker = new VersionChecker()
 let eventsAttached = false
@@ -10,6 +11,7 @@ let eventsAttached = false
 window.onload = async (e) => {
   const bounds = await window.stretchly.getWindowBounds()
   const settings = await window.settings.currentSettings()
+  settings.breakDisplayMode = getBreakDisplayMode(settings)
   if (settings.disableAppUpdateFeatures) {
     document.querySelector('#checkNewVersion').closest('div').classList.add('hidden')
   }

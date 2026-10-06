@@ -28,7 +28,8 @@
   "break": {
     "title": "Перерва!",
     "skip": "Пропустити перерву",
-    "postpone": "Відкласти"
+    "postpone": "Відкласти",
+    "finish": "Завершіть цю перерву"
   },
   "preferences": {
     "theme": {
@@ -49,7 +50,12 @@
       "sounds": "Звукові сигнали:",
       "transparentMode": "Ввімкнути прозорість",
       "appearance": "Зовнішній вигляд:",
-      "reverie": "Мрія"
+      "reverie": "Мрія",
+      "silence": "Тиша",
+      "trayIconStyleLabel": "Стиль:",
+      "trayIconStyleDefault": "За замовчуванням",
+      "trayIconStyleTime": "Час перерви",
+      "trayIconStyleProgress": "Перейти до перерви"
     },
     "about": {
       "tagline": "Нагадування про перервах",
@@ -140,8 +146,8 @@
     "pauseAfter": "Призупинити після:",
     "naturalBreaksInfo": "Якщо в основних налаштуваннях ввімкнено відстежування простою, то ви можете вказати, після якого часу таймер перерви повинний бути призупинений.",
     "naturalBreaks": "Невимушені перерви:",
-    "longBreakStartSound": "Відтворювати звук \"Кінець перерви\" на початку довгої перерви",
-    "miniBreakStartSound": "Відтворювати звук \"Кінець перерви\" на початку короткої перерви",
+    "longBreakStartSound": "Звук на початку довгої перерви",
+    "miniBreakStartSound": "Звук на початку короткої перерви",
     "volume": "Гучність:",
     "sounds": "Звукові сигнали:",
     "breakWindowHeight": "Висота:",
@@ -182,8 +188,8 @@
     "timeToBreakInTray": "Час для перерви",
     "currentTimeInBreaks": "Поточний час",
     "showCurrentTimeInBreaks": "Показати поточний місцевий час у вікні перерви",
-    "showTrayIcon": "Показати піктограму в меню",
-    "toShowTrayIcon": "Показати піктограму Stretchly на панелі меню"
+    "showTrayIcon": "Показати значок у треї",
+    "toShowTrayIcon": "Показати значок Stretchly в треї"
   },
   "statusMessages": {
     "resuming": "Продовжуємо",

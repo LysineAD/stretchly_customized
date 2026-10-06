@@ -29,3 +29,6 @@ runs:
     - name: Install dependencies
       run: npm install
       shell: bash
+    - name: Install Electron binary
+      run: npx install-electron --no
+      shell: bash

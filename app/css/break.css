@@ -135,3 +135,41 @@ body[dir=rtl] .breaks > :nth-child(2) > a img {
   position: absolute;
   right: 12px;
 }
+
+.compact-break .breaks {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.compact-break .breaks > * {
+  flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.compact-break .breaks > :nth-child(1) {
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.compact-break .breaks > :nth-child(1) > progress {
+  width: min(240px, 100%);
+}
+
+.compact-break .breaks img:not(a img) {
+  max-width: 100%;
+  height: auto;
+}
+
+.compact-break .breaks > :last-child {
+  position: static;
+}
+
+.compact-break .breaks > :last-child:empty {
+  display: none;
+}

@@ -1,5 +1,6 @@
-import { formatTimeRemaining, formatElapsedDuration, formatTimeIn, canSkip, canPostpone, formatKeyboardShortcut, minutesRemaining, shouldShowNotificationTitle, formatUnitAndValue } from '../app/utils/utils'
+import { formatTimeRemaining, formatElapsedDuration, formatTimeIn, canSkip, canPostpone, formatKeyboardShortcut, minutesRemaining, shouldShowNotificationTitle, formatUnitAndValue, insideFlatpak, insideWindowsStore, insideSnap, insideWindowsPortable, getLinuxDisplayBackend } from '../app/utils/utils'
 import { beforeAll, afterAll, vi } from 'vitest'
+import { expect } from 'chai'
 import 'chai/register-should'
 import i18next from 'i18next'
 import semver from 'semver'
@@ -183,6 +184,85 @@ describe('Others', () => {
     })
     it('works for others', () => {
       shouldShowNotificationTitle('linux', '1.0.0', semver).should.equal(true)
+    })
+  })
+
+  describe('environment helpers', () => {
+    it('detects Flatpak on Linux', () => {
+      insideFlatpak({ platform: 'linux' }, () => true).should.equal(true)
+      insideFlatpak({ platform: 'linux' }, () => false).should.equal(false)
+      insideFlatpak({ platform: 'darwin' }, () => true).should.equal(false)
+    })
+
+    it('detects Windows Store builds', () => {
+      insideWindowsStore({ platform: 'win32', windowsStore: true }).should.equal(true)
+      insideWindowsStore({ platform: 'win32', windowsStore: false }).should.equal(false)
+      insideWindowsStore({ platform: 'linux', windowsStore: true }).should.equal(false)
+    })
+
+    it('detects Snap builds', () => {
+      insideSnap({ platform: 'linux', env: { SNAP: '/snap/stretchly' } }).should.equal(true)
+      insideSnap({ platform: 'linux', env: {} }).should.equal(false)
+      insideSnap({ platform: 'darwin', env: { SNAP: '/snap/stretchly' } }).should.equal(false)
+    })
+
+    it('detects portable Windows builds', () => {
+      insideWindowsPortable({ platform: 'win32', env: { PORTABLE_EXECUTABLE_DIR: 'C:\\Stretchly' } }).should.equal(true)
+      insideWindowsPortable({ platform: 'win32', env: {} }).should.equal(false)
+      insideWindowsPortable({ platform: 'linux', env: { PORTABLE_EXECUTABLE_DIR: '/opt/stretchly' } }).should.equal(false)
+    })
+
+    describe('getLinuxDisplayBackend', () => {
+      it('returns null for non-Linux platforms', () => {
+        const backend = getLinuxDisplayBackend('wayland', {
+          platform: 'darwin',
+          env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0' }
+        })
+        expect(backend).to.equal(null)
+      })
+
+      it('returns an explicit Wayland backend', () => {
+        getLinuxDisplayBackend(' Wayland ', { platform: 'linux', env: {} }).should.equal('wayland')
+      })
+
+      it('returns an explicit X11 backend in a Wayland session', () => {
+        getLinuxDisplayBackend(' X11 ', {
+          platform: 'linux',
+          env: { XDG_SESSION_TYPE: 'wayland', WAYLAND_DISPLAY: 'wayland-0' }
+        }).should.equal('x11')
+      })
+
+      it('falls back to the Wayland session type', () => {
+        getLinuxDisplayBackend('', {
+          platform: 'linux',
+          env: { XDG_SESSION_TYPE: ' Wayland ', DISPLAY: ':1' }
+        }).should.equal('wayland')
+      })
+
+      it('falls back to the X11 session type', () => {
+        getLinuxDisplayBackend('', {
+          platform: 'linux',
+          env: { XDG_SESSION_TYPE: ' X11 ', WAYLAND_DISPLAY: 'wayland-0' }
+        }).should.equal('x11')
+      })
+
+      it('falls back to the Wayland display', () => {
+        getLinuxDisplayBackend('', {
+          platform: 'linux',
+          env: { WAYLAND_DISPLAY: 'wayland-0' }
+        }).should.equal('wayland')
+      })
+
+      it('falls back to the X11 display', () => {
+        getLinuxDisplayBackend('', {
+          platform: 'linux',
+          env: { DISPLAY: ':1' }
+        }).should.equal('x11')
+      })
+
+      it('returns null when the Linux backend is unknown', () => {
+        expect(getLinuxDisplayBackend('', { platform: 'linux', env: {} })).to.equal(null)
+      })
     })
   })
 })

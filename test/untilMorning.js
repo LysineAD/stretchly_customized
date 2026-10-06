@@ -5,9 +5,10 @@ import Store from 'electron-store'
 import { join } from 'path'
 import { Settings, DateTime } from 'luxon'
 import defaultSettings from '../app/utils/defaultSettings'
-import { unlinkSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 
 const timeout = process.env.CI ? 30000 : 10000
+const defaultNow = Settings.now
 
 describe('UntilMorning', function () {
   let settings
@@ -21,9 +22,11 @@ describe('UntilMorning', function () {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    Settings.now = defaultNow
+
     if (settings) {
-      unlinkSync(join(__dirname, '/test-settings-untilMorning.json'))
+      await rm(join(__dirname, '/test-settings-untilMorning.json'), { force: true })
       settings = null
     }
   })
@@ -48,12 +51,12 @@ describe('UntilMorning', function () {
     })
 
     it('msToSunrise() returns morning time the same day', function () {
-      const dt = DateTime.local().set({ hours: 14, minutes: 0, seconds: 0 })
+      const dt = DateTime.local(2021, 5, 25, 14, 0, 0)
       new UntilMorning(settings).msToSunrise(dt).should.be.within(60 * 60 * 1000 - 60000, 60 * 60 * 1000 + 60000)
     })
 
     it('msToSunrise() returns morning time the next day', function () {
-      const dt = DateTime.local().set({ hours: 16, minutes: 0, seconds: 0 })
+      const dt = DateTime.local(2021, 5, 25, 16, 0, 0)
       new UntilMorning(settings).msToSunrise(dt).should.be.within(23 * 60 * 60 * 1000 - 60000, 23 * 60 * 60 * 1000 + 60000)
     })
   })

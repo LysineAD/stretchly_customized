@@ -1,17 +1,23 @@
-import { vi } from 'vitest'
+import { afterEach, vi } from 'vitest'
 import { expect } from 'chai'
 import VersionChecker from '../app/utils/versionChecker'
 
 describe('VersionChecker', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
   describe('latest', () => {
     it('fetches tag name', async () => {
       const tagName = 'tag name'
       const body = 'body'
-      JSON.parse = vi.fn().mockReturnValue({ tag_name: tagName })
+      const parse = vi.spyOn(JSON, 'parse').mockReturnValue({ tag_name: tagName })
       const response = {
         text: vi.fn().mockReturnValue(Promise.resolve(body))
       }
-      globalThis.fetch = vi.fn().mockReturnValue(Promise.resolve(response))
+      const fetch = vi.fn().mockReturnValue(Promise.resolve(response))
+      vi.stubGlobal('fetch', fetch)
 
       const checker = new VersionChecker()
       const result = await checker.latest()
@@ -28,7 +34,7 @@ describe('VersionChecker', () => {
       ])
 
       expect(response.text).toHaveBeenCalled()
-      expect(JSON.parse.mock.calls[0]).toEqual([body])
+      expect(parse.mock.calls[0]).toEqual([body])
     })
   })
 })

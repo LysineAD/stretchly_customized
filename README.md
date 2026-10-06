@@ -162,7 +162,15 @@ Clicking the *Stretchly* icon in your tray area will display the current status 
 
 When a Stretchly instance is running, the `stretchly` command can be use to interact with it from the command line.
 
+The regular Windows installer adds `stretchly` to PATH, so commands can be run from a new terminal without specifying the full executable path.
+
 Type `stretchly help` to get a list of all commands and options available as well as some examples.
+
+## Customized Windows build
+
+This fork includes Extended breaks and is based on Stretchly 1.22.1. In Preferences, choose Window, Full screen, or Compact. Compact centers a content-fitting reminder on each selected monitor and retains the existing advice font sizes and line spacing. Enable "Allow clicks through break windows" to pass mouse input to the application underneath; visible break controls and advice links remain clickable. Both additions are disabled by default so existing preferences keep their display behavior.
+
+To build the local Windows application, run `npm ci` followed by `npm run pack -- --win --x64`. Copy the complete `dist/win-unpacked` folder to `D:\Projects\Stretchly_Customized` and run `Stretchly Customized.exe`. This customization was AI-assisted.
 
 ## Preferences
 
@@ -355,7 +363,7 @@ If you'd like to disable the shortcut, set value to empty string `""`. That's th
 #### Appearance [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, change `themeSource: 'system'` to either `'light'` or `'dark'` to always use the specified theme.
 
-In the preferences file, change `trayIconThemeSource: 'system'` to either `'light'` or `'dark'` to force the tray icon's light or dark variant instead of following the system theme. `'system'` follows the same light/dark theme as the rest of Stretchly (the OS theme, or whatever `themeSource` is set to). On macOS this affects colour icons only; monochrome icons are tinted by the system.
+In the preferences file, change `trayIconThemeSource: 'system'` to either `'light'` or `'dark'` to force the tray icon's light or dark variant instead of following the system theme. On Windows, `'system'` follows the Windows mode used by the taskbar. On macOS and Linux, it follows the same light/dark theme as the rest of Stretchly (the OS theme, or whatever `themeSource` is set to). On macOS this affects colour icons only; monochrome icons are tinted by the system.
 
 #### Break window color
 In the preferences file, change `mainColor` to whatever color you like.
@@ -591,9 +599,9 @@ You can help to translate Stretchly on [Weblate](https://hosted.weblate.org/enga
 
 
 ## Known issues
-- Autostart does not work in Flathub app ([#1517](https://github.com/hovancik/stretchly/issues/1517))
-- idle time detection doesn't work on Wayland ([electron/electron#27912](https://github.com/electron/electron/issues/27912))
+- The end break shortcut is disabled on native Wayland because temporary global shortcuts cannot be reliably released. Use the break controls or start Stretchly with the X11 backend (`stretchly --ozone-platform=x11`). On KDE, remove any assignment created by an earlier Stretchly version once in System Settings > Keyboard > Shortcuts.
 - Windows Store build's autostart is not working, so was disabled. To use autostart, install Stretchly with the [regular installer](https://github.com/hovancik/stretchly/releases), or create a shortcut to Stretchly from `shell:AppsFolder` (Win+R) and move it to the `shell:startup` folder (Win+R).
+- The Snap build may fail to start on native Wayland. Start it with the X11 backend (`stretchly --ozone-platform=x11`) as a workaround. See [#1693](https://github.com/hovancik/stretchly/issues/1693).
 - Wayland multi-display window placement issue puts all break windows on one monitor; start with X11 backend (`stretchly --ozone-platform=x11`) if needed. See [electron/electron#48749](https://github.com/electron/electron/issues/48749).
 
 ### MacOS

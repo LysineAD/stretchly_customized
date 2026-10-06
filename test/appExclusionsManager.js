@@ -5,7 +5,7 @@ import AppExclusionsManager from '../app/utils/appExclusionsManager'
 import Store from 'electron-store'
 import defaultSettings from '../app/utils/defaultSettings'
 import psList from 'ps-list'
-import { unlinkSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 
 const timeout = process.env.CI ? 30000 : 10000
 
@@ -263,9 +263,12 @@ describe('appExclusionsManager', function () {
       resolve()
     }))
 
-  afterEach(() => {
+  afterEach(async () => {
+    appExclusionsManager?.stop()
+    appExclusionsManager = null
+
     if (settings) {
-      unlinkSync(join(__dirname, '/test-settings-appExclusionsManager.json'))
+      await rm(join(__dirname, '/test-settings-appExclusionsManager.json'), { force: true })
       settings = null
     }
   })

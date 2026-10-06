@@ -10,3 +10,4 @@ coverage
 *build-dir/
 repo/
 flatpak-node-generator.py
+.scratch/

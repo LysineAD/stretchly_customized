@@ -2,6 +2,7 @@ import HtmlTranslate from './utils/htmlTranslate.js'
 import applyBreakHealthEffect from './utils/breakHealthEffect.js'
 import createRunOnce from './utils/runOnce.js'
 import './platform.js'
+import initializeBreakPresentation from './utils/breakPresentation.js'
 
 window.onload = async (event) => {
   const [idea, started, duration, strictMode, postpone,
@@ -119,5 +120,6 @@ window.onload = async (event) => {
     progressTime.innerHTML = await window.utils.formatElapsedDuration(Date.now() - started, locale)
   })
 
+  initializeBreakPresentation().catch(error => console.error(error))
   await window.breaks.signalLoaded()
 }

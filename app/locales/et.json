@@ -4,7 +4,7 @@
       "text": "Tõstke parem käsi üles, sirutage see üle pea vasakule ja hoidke 10 sekundit. Korda teisel küljel."
     },
     "abl": {
-      "text": "Seisa sirgelt, käed õlgade kõrgusele tõstetud, külgedel. Liiguta käsi veidi selja taha, hoidke sekund ja too käed külgedele tagasi."
+      "text": "Seisa sirgelt, käed õlgade kõrgusele tõstetud, külgedel. Liiguta käsi veidi selja taha, hoia sekund ja too käed külgedele tagasi."
     },
     "aak": {
       "text": "Tõuse toolilt ja ringuta."
@@ -173,26 +173,31 @@
       "colour": "Värviline",
       "greenClouds": "Rohelised pilved",
       "snowWhite": "Lumivalge",
-      "graphiteCrystal": "Grafiitkristall"
+      "graphiteCrystal": "Grafiitkristall",
+      "silence": "Vaikus",
+      "trayIconStyleLabel": "Stiil:",
+      "trayIconStyleDefault": "Vaikimisi",
+      "trayIconStyleTime": "Aeg puhkuseni",
+      "trayIconStyleProgress": "Edenemine pausini"
     },
     "schedule": {
-      "longBreaks": "Suured pausid:",
-      "enableLongBreaks": "Võimalda suured pausid",
+      "longBreaks": "Pikad pausid:",
+      "enableLongBreaks": "Võimalda pikad pausid",
       "strictMode": "Range režiim:",
-      "enablePostponeMini": "Luba väikese pausi edasilükkamist",
-      "enableStrictMini": "Luba range režiim väikeste pauside jaoks",
-      "enableStrictLong": "Luba range režiim suurte pauside jaoks",
+      "enablePostponeMini": "Luba lühikese pausi edasilükkamist",
+      "enableStrictMini": "Luba range režiim lühikeste pauside jaoks",
+      "enableStrictLong": "Luba range režiim pikkade pauside jaoks",
       "cantDisableBoth": "Mõlemat tüüpi pause ei saa keelata",
-      "miniBreaksInfo": "Väikesed pausid on lühikesed pausid, mida võetakse regulaarselt, et anda sulle võimalus venitada ja lõõgastuda.",
+      "miniBreaksInfo": "Lühikesed pausid on napid pausid, mida saad teha regulaarselt, et anda sulle võimalus venitada ja lõõgastuda.",
       "breakFor": "Paus kestusega:",
-      "miniBreaks": "Väikesed pausid:",
-      "longBreaksInfo": "Suuri pause võetakse harvemini, kuid on pikema kestusega, võimaldades sul teha pikema paus oma tööst.",
+      "miniBreaks": "Lühikesed pausid:",
+      "longBreaksInfo": "Pikki pause võetakse harvemini, kuid need kestavad kauem, võimaldades sul teha tõsiema pausi oma tööst.",
       "every": "Aja tagant:",
-      "showNotificationBeforeMiniBreak": "Näita teavitust enne väikese pausi algust",
-      "strictModeInfo": "Range režiim takistab nii väikeste kui ka suurte pauside vahelejätmist ning on loodud distsipliini toetamiseks.",
-      "showNotificationBeforeLongBreak": "Näita teavitust enne suure pausi algust",
-      "enablePostponeLong": "Luba suure pausi edasilükkamist",
-      "enableMiniBreaks": "Võimalda väikesed pausid"
+      "showNotificationBeforeMiniBreak": "Näita teavitust enne lühikesed pausi algust",
+      "strictModeInfo": "Range režiim takistab nii lühikeste kui ka pikkade pauside vahelejätmist ning on loodud distsipliini toetamiseks.",
+      "showNotificationBeforeLongBreak": "Näita teavitust enne pika pausi algust",
+      "enablePostponeLong": "Luba pika pausi edasilükkamist",
+      "enableMiniBreaks": "Võimalda lühikesed pausid"
     },
     "about": {
       "ourWebsite": "külasta meie veebilehte",
@@ -220,9 +225,9 @@
     "settings": {
       "language": "Vali keel:",
       "window": "Aknas",
-      "monitorDnd": "Näita pause isegi \"Ära häiri\" režiimis",
+      "monitorDnd": "Näita pause isegi „Ära sega“ režiimis",
       "allScreens": "Kuvab pause kõigil ekraanidel",
-      "restoreDefaults": "Taasta vaikeseaded",
+      "restoreDefaults": "Taasta vaikeseadistused",
       "monitorIdleTime": "Monitoorib süsteemi passiivset aega (pausid on peatatud, kui süsteem on passiivne).",
       "openAtLogin": "Käivita Stretchly automaatselt sisselogimisel",
       "showIdeas": "Näita pauside ajal harjutuste soovitusi",
@@ -233,13 +238,13 @@
       "theme": "Kujundus",
       "schedule": "Ajakava",
       "heart": "Armastan Stretchlyt",
-      "settings": "Seaded",
+      "settings": "Seadistused",
       "about": "Info"
     }
   },
   "contributorPreferences": {
     "breakWindowHeight": "Kõrgus:",
-    "longBreakStartSound": "Esitage pausi lõpu heli ka suure pausi alguses",
+    "longBreakStartSound": "Anna pika pausi alguses heliga märku",
     "customIdeasInfo": "Võimaldab kasutada kohandatud pausiideid, muutes konfiguratsioonifaili. (Kogenenud kasutajatele.)",
     "showBreaksAsRegularWindowsTitle": "Toimi nagu tavaline aken:",
     "pauseAfter": "Paus pärast:",
@@ -247,7 +252,7 @@
     "newVersion": "Uus versioon:",
     "4": "Viies monitor",
     "screen": "Monitor pauside jaoks:",
-    "showTrayIcon": "Kuva menüüriba ikoon",
+    "showTrayIcon": "Kuva süsteemisalve ikoon",
     "title": "Kaasautori seaded",
     "appearance": "Kujundus:",
     "newVersionNotification": "Teavita kui uus versioon on saadaval",
@@ -256,14 +261,14 @@
     "showCurrentTimeInBreaks": "Kuva pausiaknas praegune kohalik aeg",
     "dark": "Tume",
     "2": "Kolmas monitor",
-    "longBreaks": "Suured pausid:",
-    "toShowTrayIcon": "Kuva menüüribal Stretchly ikoon",
+    "longBreaks": "Pikad pausid:",
+    "toShowTrayIcon": "Kuva Stretchly ikoon süsteemisalves",
     "naturalBreaksInfo": "Kui peamistes eelistustes on süsteemi passiivsuse jälgimine lubatud, saate määrata, mis aja möödudes pausid peatada.",
     "timeToBreakInTray": "Aeg paus teha",
     "3": "Neljas monitor",
     "showWelcomeWindow": "Kuva tervitusaken järgmisel käivitamisel",
     "breakWindowSize": "Pausiakna suurus",
-    "miniBreakStartSound": "Esitage pausi lõpu heli ka väikese pausi alguses",
+    "miniBreakStartSound": "Anna heliga märku lühikese pausi alguses",
     "system": "Süsteemikohane",
     "light": "Hele",
     "volume": "Helitugevus:",
@@ -272,8 +277,8 @@
     "breakWindowWidth": "Laius:",
     "showTimeToBreakInTray": "Kuva menüüriba ikoonil aeg järgmise pausini",
     "breakWindowSizeInfo": "Mitu protsenti ekraanist peaks pausiaken peitma?",
-    "useIdeasFromSettings": "Kasutage konfiguratsioonifaili pausiideid",
-    "screenInfo": "Kui pauside kuvamine kõigil monitoridel on keelatud, saate valida, millisel soovite oma pause kuvada.",
+    "useIdeasFromSettings": "Kasuta konfiguratsioonifaili pausiideid",
+    "screenInfo": "Kui pauside kuvamine kõigil monitoridel on keelatud, saad valida, millisel soovid oma pause kuvada.",
     "pauseUntil": "Peata kuni:",
     "postponableFor": "Edasilükatav:",
     "opacity": "Läbipaistvus:",
@@ -281,11 +286,11 @@
     "sounds": "Helid:",
     "breakPostpone": "Pauside edasilükkamine:",
     "naturalBreaks": "Loomulikud pausid:",
-    "breakPostponeInfo": "Kui see on põhieelistustes lubatud, saate pause edasi lükata. Järgmised seaded võimaldavad määrata, millal, kui kauaks ja mitu korda saab pausi edasi lükata.",
+    "breakPostponeInfo": "Kui see on põhieelistustes lubatud, saad pause edasi lükata. Järgmised seadistused võimaldavad määrata, millal, kui kauaks ja mitu korda saad pausi edasi lükata.",
     "showOnMonitor": "Näita pause",
     "showBreaksAsRegularWindows": "Kuva pausid tavaliste akendena",
-    "beforeMiniBreak": "Väike paus:",
-    "beforeLongBreak": "Suur paus:",
+    "beforeMiniBreak": "Lühike paus:",
+    "beforeLongBreak": "Pikk paus:",
     "primary": "Peamisel monitoril",
     "notificationsInfo": "Süsteemi märguanne kuvatakse enne pause, et saaksite selleks valmistuda.",
     "maxPostpones": "Maksimaalne edasilükkamiste arv:",
@@ -294,7 +299,7 @@
     "opacityInfo": "Milline peaks pausi teavitusaken olema?",
     "pauseUntilMorningInfo": "Määrake, millise kellaajani funktsioon \"Peata hommikuni\" peaks peatuma.",
     "opacityTheme": "Väljanägemise läbipaistvus:",
-    "miniBreaks": "Väikesed pausid:",
+    "miniBreaks": "Lühikesed pausid:",
     "currentTimeInBreaks": "Praegune aeg",
     "notifications": "Pauside teavitused:"
   },
@@ -349,7 +354,7 @@
     },
     "aal": {
       "title": "Aktiivsed koosolekud",
-      "text": "Kuidas oleks, kui viiksite koosolekud konverentsisaalist välja? Kõndimine mitte ainult ei põleta kaloreid, vaid võib isegi edendada koostöötunnet."
+      "text": "Kuidas oleks, kui viiksid koosolekud konverentsisaalist välja? Kõndimine mitte ainult ei põleta kaloreid, vaid võib isegi edendada koostöötunnet."
     },
     "aai": {
       "title": "Märka",
@@ -438,6 +443,10 @@
     "abi": {
       "title": "Fantaasiarikas visualiseerimine",
       "text": "Sulge silmad ja kujutle end rahulikus ja rahustavas kohas, näiteks rannas või metsas, keskendudes selle keskkonna vaatamisväärsustele, helidele ja aistingutele."
+    },
+    "abj": {
+      "title": "Kas oled ülekoormatud?",
+      "text": "Proovi 5-4-3-2-1 maandamistehnikat: nimeta 5 asja, mida näed; 4 asja, mida saad puudutada; 3 asja, mida kuuled; 2 asja, mida saad nuusutada ja 1 asi, mida saad maitsta."
     }
   },
   "statusMessages": {
@@ -445,37 +454,37 @@
     "resuming": "Jätkates",
     "indefinitely": "Määramata ajaks",
     "appExclusion": "Rakenduse välistamise reegel",
-    "nextLongBreak": "Järgmine suur paus",
-    "afterMiniBreak_one": "pärast {{count}} väikest pausi",
-    "afterMiniBreak_other": "pärast {{count}} väikest pausi",
-    "nextMiniBreak": "Järgmine väike paus",
+    "nextLongBreak": "Järgmine pikk paus",
+    "afterMiniBreak_one": "pärast {{count}} lühikest pausi",
+    "afterMiniBreak_other": "pärast {{count}} lühikest pausi",
+    "nextMiniBreak": "Järgmine lühike paus",
     "dndMode": "Režiim 'Mitte segada' on sisse lülitatud"
   },
   "main": {
     "skipToTheNext": "Liigu järgmisele",
     "downloadLatestVersion": "Lae alla uusim versioon",
     "for5Hours": "5 tundi",
-    "toBreak": "Suur paus",
+    "toBreak": "Pikk paus",
     "restoreDefaults": "Taasta vaikesätted",
     "for2Hours": "2 tundi",
     "syncPreferences": "Sünkroniseerimise seaded",
-    "preferences": "Seaded",
+    "preferences": "Eelistused",
     "pause": "Peata pausid",
     "continue": "Jätka",
     "forHour": "1 tund",
     "indefinitely": "Määramata ajaks",
-    "warning": "See taastab rakenduse vaikesätted ja kaotab kõik sinu seadistused.",
+    "warning": "See taastab rakenduse vaikeimisi seadistused ja kaotab kõik sinu tehtud muudatused.",
     "untilMorning": "Kuni hommikuni",
     "resume": "Jätka pausidega",
     "cancel": "Katkesta",
-    "toMicrobreak": "Väike paus",
+    "toMicrobreak": "Lühike paus",
     "contributorPreferences": "Kaasautorite eelistused",
     "quitStretchly": "Sulge Stretchly",
     "toolTipHeader": "Stretchly - Puhkehetkede meeldetuletusrakendus",
-    "breakIn": "Suure pausini $t(utils.seconds, {'count': {{seconds}} })",
+    "breakIn": "Pika pausini on jäänud $t(utils.seconds, {'count': {{seconds}} })",
     "resetBreaks": "Lähtesta pausid",
     "resumingBreaks": "Pauside jätkamine",
-    "microbreakIn": "Väikese pausini $t(utils.seconds, {'count': {{seconds}} })"
+    "microbreakIn": "Lühikese pausini on jäänud $t(utils.seconds, {'count': {{seconds}} })"
   },
   "utils": {
     "percent_one": "{{count}} protsenti",
@@ -486,12 +495,13 @@
     "minutes_other": "{{count}} minutit",
     "seconds_one": "{{count}} sekund",
     "seconds_other": "{{count}} sekundit",
-    "oclock_one": "{{count}} kell",
-    "oclock_other": "{{count}} kell",
+    "oclock_one": "Kell {{count}}",
+    "oclock_other": "Kell {{count}}",
     "none_one": "{{count}}",
     "none_other": "{{count}}",
     "inAbout": "umbes {{count}}",
-    "remaining": "{{count}} jäänud"
+    "remaining": "{{count}} jäänud",
+    "elapsed": "Möödunud on {{count}}"
   },
   "welcome": {
     "getStarted": "Alusta",
@@ -503,7 +513,8 @@
   "break": {
     "skip": "Jäta see paus vahele",
     "title": "Aeg teha paus!",
-    "postpone": "Lükka see paus edasi"
+    "postpone": "Lükka see paus edasi",
+    "finish": "Lõpeta see paus"
   },
   "process": {
     "newVersionAvailable": "Uus versioon on saadaval!"

@@ -17,7 +17,8 @@ import { DateTime } from 'luxon'
 
 import {
   canPostpone, canSkip, formatTimeRemaining,
-  minutesRemaining, insideWindowsStore, insideFlatpak, insideSnap, insideWindowsPortable
+  minutesRemaining, insideWindowsStore, insideFlatpak, insideSnap, insideWindowsPortable,
+  getLinuxDisplayBackend
 } from './utils/utils.js'
 import IdeasLoader from './utils/ideasLoader.js'
 import BreaksPlanner from './breaksPlanner.js'
@@ -29,9 +30,13 @@ import { registerBreakShortcuts } from './utils/breakShortcuts.js'
 import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
+import { getCompactBreakBounds, setBreakDisplayMode } from './utils/breakDisplaySettings.js'
+import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough } from './utils/breakWindowPresentation.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+registerBreakWindowPresentationHandlers()
 
 let handlingUncaughtException = false
 process.on('uncaughtException', (err, _) => {
@@ -91,6 +96,7 @@ let updateChecker
 let currentTrayIconPath = null
 let currentTrayMenuTemplate = null
 let trayUpdateIntervalObj = null
+let endBreakShortcutSupported
 
 if (insideWindowsPortable()) {
   const portableDataPath = join(process.env.PORTABLE_EXECUTABLE_DIR, 'Data')
@@ -235,6 +241,14 @@ async function initialize (isAppStart = true) {
   }
   // TODO maybe we should not reinitialize but handle everything when we save new values for preferences
   log.info(`Stretchly: ${isAppStart ? '' : 're'}initializing...`)
+  const linuxDisplayBackend = getLinuxDisplayBackend(
+    app.commandLine.getSwitchValue('ozone-platform')
+  )
+  // TODO: Re-enable when Electron can unregister individual Wayland portal shortcuts.
+  endBreakShortcutSupported = linuxDisplayBackend !== 'wayland'
+  if (isAppStart && !endBreakShortcutSupported) {
+    log.info('Stretchly: end break shortcut disabled on native Wayland')
+  }
 
   EventEmitter.setMaxListeners(200) // for watching Store changes
   if (!settings) {
@@ -562,6 +576,7 @@ function trayIconUseDarkColors () {
   const source = settings.get('trayIconThemeSource')
   if (source === 'light') return false
   if (source === 'dark') return true
+  if (process.platform === 'win32') return nativeTheme.shouldUseDarkColorsForSystemIntegratedUI
   return nativeTheme.shouldUseDarkColors
 }
 
@@ -778,7 +793,8 @@ function startMicrobreak () {
   const postponableDurationPercent = settings.get('microbreakPostponableDurationPercent')
   const postponable = settings.get('microbreakPostpone') &&
     breakPlanner.postponesNumber < postponesLimit && postponesLimit > 0
-  const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows')
+  const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
+  const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
@@ -796,7 +812,7 @@ function startMicrobreak () {
   ipcMain.handle('send-mini-break-data', (event) => {
     const startTime = Date.now()
     const shortcut = settings.get('endBreakShortcut')
-    if (shortcut) {
+    if (shortcut && endBreakShortcutSupported) {
       globalShortcut.register(shortcut, () => {
         log.info('Stretchly: end break shortcut pressed during Mini break')
         const passedPercent = (Date.now() - startTime) / breakDuration * 100
@@ -819,7 +835,7 @@ function startMicrobreak () {
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
-  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && contentDisplayId !== -1
+  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
   const emitOnId = useContentScreen ? contentDisplayId : 0
 
   for (let localDisplayId = 0; localDisplayId < displayManager.getDisplayCount(); localDisplayId++) {
@@ -837,7 +853,7 @@ function startMicrobreak () {
       ...getBlurredBackgroundWindowOptions(),
       backgroundColor: calculateBackgroundColor(settings.get('miniBreakColor')),
       skipTaskbar: !showBreaksAsRegularWindows,
-      focusable: showBreaksAsRegularWindows,
+      focusable: showBreaksAsRegularWindows && !settings.get('breakClickThrough'),
       alwaysOnTop: !showBreaksAsRegularWindows,
       hasShadow: false,
       title: 'Stretchly',
@@ -849,17 +865,20 @@ function startMicrobreak () {
       }
     }
 
-    if (settings.get('fullscreen') && process.platform !== 'darwin') {
+    if (settings.get('compactBreaks')) {
+      Object.assign(windowOptions, getCompactBreakBounds(displayManager.getTargetDisplay(localDisplayId)))
+    } else if (fullscreen && process.platform !== 'darwin') {
       windowOptions.width = displayManager.getDisplayWidth(localDisplayId)
       windowOptions.height = displayManager.getDisplayHeight(localDisplayId)
       windowOptions.x = displayManager.getDisplayX(localDisplayId, 0, true)
       windowOptions.y = displayManager.getDisplayY(localDisplayId, 0, true)
-    } else if (!(settings.get('fullscreen') && process.platform === 'win32')) {
+    } else if (!(fullscreen && process.platform === 'win32')) {
       windowOptions.x = displayManager.getDisplayX(localDisplayId, windowOptions.width, false)
       windowOptions.y = displayManager.getDisplayY(localDisplayId, windowOptions.height, false)
     }
 
     let microbreakWinLocal = new BrowserWindow(windowOptions)
+    configureBreakWindowPresentation(microbreakWinLocal, settings, displayManager.getTargetDisplay(localDisplayId))
     // seems to help with multiple-displays problems
     microbreakWinLocal.setSize(windowOptions.width, windowOptions.height)
 
@@ -871,7 +890,7 @@ function startMicrobreak () {
       if (event.sender !== microbreakWinLocal.webContents) return
       ipcMain.off('mini-break-loaded', onMiniBreakLoaded)
       log.info('Stretchly: Mini break window loaded')
-      if (showBreaksAsRegularWindows) {
+      if (showBreaksAsRegularWindows && !settings.get('breakClickThrough')) {
         microbreakWinLocal.show()
       } else {
         microbreakWinLocal.showInactive()
@@ -880,18 +899,18 @@ function startMicrobreak () {
       log.info(`Stretchly: showing window ${localDisplayId + 1} of ${displayManager.getDisplayCount()}`)
       if (process.platform === 'darwin') {
         if (showBreaksAsRegularWindows) {
-          microbreakWinLocal.setFullScreen(settings.get('fullscreen'))
+          microbreakWinLocal.setFullScreen(fullscreen)
         } else {
           microbreakWinLocal.setMinimizable(false)
           microbreakWinLocal.setClosable(false)
-          microbreakWinLocal.setKiosk(settings.get('fullscreen'))
+          microbreakWinLocal.setKiosk(fullscreen)
         }
       }
       if (localDisplayId === emitOnId) {
         breakPlanner.emit('microbreakStarted', true)
         log.info('Stretchly: starting Mini break')
       }
-      if (!settings.get('fullscreen') && process.platform !== 'darwin') {
+      if (!fullscreen && !settings.get('compactBreaks') && process.platform !== 'darwin') {
         setTimeout(() => {
           microbreakWinLocal.center()
         }, 0)
@@ -902,7 +921,7 @@ function startMicrobreak () {
 
     microbreakWinLocal.loadURL(isBlank ? modalPath + '?blank=1' : modalPath)
     // kiosk fullscreen owns its own Space; CanJoinAllSpaces would eject it (menu bar returns)
-    if (!(process.platform === 'darwin' && !showBreaksAsRegularWindows && settings.get('fullscreen'))) {
+    if (!(process.platform === 'darwin' && !showBreaksAsRegularWindows && fullscreen)) {
       microbreakWinLocal.setVisibleOnAllWorkspaces(true)
     }
     microbreakWinLocal.setAlwaysOnTop(!showBreaksAsRegularWindows, 'pop-up-menu')
@@ -950,7 +969,8 @@ function startBreak (type = 'long') {
   const postponableDurationPercent = settings.get(`${settingPrefix}PostponableDurationPercent`)
   const postponable = settings.get(`${settingPrefix}Postpone`) &&
     breakPlanner.postponesNumber < postponesLimit && postponesLimit > 0
-  const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows')
+  const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
+  const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
   const modalPath = 'file://' + join(__dirname, '/break.html')
   if (isExtended) {
@@ -975,7 +995,7 @@ function startBreak (type = 'long') {
   ipcMain.handle(`send-${bridgeType}-break-data`, (event) => {
     const startTime = Date.now()
     const shortcut = settings.get('endBreakShortcut')
-    if (shortcut) {
+    if (shortcut && endBreakShortcutSupported) {
       globalShortcut.register(shortcut, () => {
         log.info(`Stretchly: end break shortcut pressed during ${breakLabel} break`)
         const passedPercent = (Date.now() - startTime) / breakDuration * 100
@@ -1010,7 +1030,7 @@ function startBreak (type = 'long') {
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
-  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && contentDisplayId !== -1
+  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
   const emitOnId = useContentScreen ? contentDisplayId : 0
 
   for (let localDisplayId = 0; localDisplayId < displayManager.getDisplayCount(); localDisplayId++) {
@@ -1028,7 +1048,7 @@ function startBreak (type = 'long') {
       ...getBlurredBackgroundWindowOptions(),
       backgroundColor: calculateBackgroundColor(settings.get('mainColor')),
       skipTaskbar: !showBreaksAsRegularWindows,
-      focusable: showBreaksAsRegularWindows,
+      focusable: showBreaksAsRegularWindows && !settings.get('breakClickThrough'),
       alwaysOnTop: !showBreaksAsRegularWindows,
       hasShadow: false,
       title: 'Stretchly',
@@ -1040,17 +1060,20 @@ function startBreak (type = 'long') {
       }
     }
 
-    if (settings.get('fullscreen') && process.platform !== 'darwin') {
+    if (settings.get('compactBreaks')) {
+      Object.assign(windowOptions, getCompactBreakBounds(displayManager.getTargetDisplay(localDisplayId)))
+    } else if (fullscreen && process.platform !== 'darwin') {
       windowOptions.width = displayManager.getDisplayWidth(localDisplayId)
       windowOptions.height = displayManager.getDisplayHeight(localDisplayId)
       windowOptions.x = displayManager.getDisplayX(localDisplayId, 0, true)
       windowOptions.y = displayManager.getDisplayY(localDisplayId, 0, true)
-    } else if (!(settings.get('fullscreen') && process.platform === 'win32')) {
+    } else if (!(fullscreen && process.platform === 'win32')) {
       windowOptions.x = displayManager.getDisplayX(localDisplayId, windowOptions.width, false)
       windowOptions.y = displayManager.getDisplayY(localDisplayId, windowOptions.height, false)
     }
 
     let breakWinLocal = new BrowserWindow(windowOptions)
+    configureBreakWindowPresentation(breakWinLocal, settings, displayManager.getTargetDisplay(localDisplayId))
     // seems to help with multiple-displays problems
     breakWinLocal.setSize(windowOptions.width, windowOptions.height)
 
@@ -1062,7 +1085,7 @@ function startBreak (type = 'long') {
       if (event.sender !== breakWinLocal.webContents) return
       ipcMain.off(`${bridgeType}-break-loaded`, onLongBreakLoaded)
       log.info(`Stretchly: ${breakLabel} break window loaded`)
-      if (showBreaksAsRegularWindows) {
+      if (showBreaksAsRegularWindows && !settings.get('breakClickThrough')) {
         breakWinLocal.show()
       } else {
         breakWinLocal.showInactive()
@@ -1071,11 +1094,11 @@ function startBreak (type = 'long') {
       log.info(`Stretchly: showing window ${localDisplayId + 1} of ${displayManager.getDisplayCount()}`)
       if (process.platform === 'darwin') {
         if (showBreaksAsRegularWindows) {
-          breakWinLocal.setFullScreen(settings.get('fullscreen'))
+          breakWinLocal.setFullScreen(fullscreen)
         } else {
           breakWinLocal.setMinimizable(false)
           breakWinLocal.setClosable(false)
-          breakWinLocal.setKiosk(settings.get('fullscreen'))
+          breakWinLocal.setKiosk(fullscreen)
         }
       }
       if (localDisplayId === emitOnId) {
@@ -1083,7 +1106,7 @@ function startBreak (type = 'long') {
         log.info(`Stretchly: starting ${breakLabel} break`)
       }
 
-      if (!settings.get('fullscreen') && process.platform !== 'darwin') {
+      if (!fullscreen && !settings.get('compactBreaks') && process.platform !== 'darwin') {
         setTimeout(() => {
           breakWinLocal.center()
         }, 0)
@@ -1094,7 +1117,7 @@ function startBreak (type = 'long') {
 
     breakWinLocal.loadURL(isBlank ? modalPath + '?blank=1' : modalPath)
     // kiosk fullscreen owns its own Space; CanJoinAllSpaces would eject it (menu bar returns)
-    if (!(process.platform === 'darwin' && !showBreaksAsRegularWindows && settings.get('fullscreen'))) {
+    if (!(process.platform === 'darwin' && !showBreaksAsRegularWindows && fullscreen)) {
       breakWinLocal.setVisibleOnAllWorkspaces(true)
     }
     breakWinLocal.setAlwaysOnTop(!showBreaksAsRegularWindows, 'pop-up-menu')
@@ -1708,6 +1731,18 @@ ipcMain.on('finish-extended-break', function (event, shouldPlaySound, manualAwai
 })
 
 ipcMain.on('save-setting', function (event, key, value) {
+  if (key === 'breakDisplayMode') {
+    setBreakDisplayMode(settings, value)
+    return
+  }
+
+  if (key === 'breakClickThrough') {
+    if (typeof value !== 'boolean') return
+    settings.set(key, value)
+    updateBreakClickThrough([microbreakWins, breakWins, extendedBreakWins], value)
+    return
+  }
+
   if (key === 'naturalBreaks') {
     breakPlanner.naturalBreaks(value)
   }

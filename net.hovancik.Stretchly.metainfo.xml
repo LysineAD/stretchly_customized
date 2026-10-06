@@ -36,6 +36,53 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.22.1" date="2026-08-13">
+      <description>
+        <p>Changed</p>
+        <ul>
+          <li>updated many translations</li>
+        </ul>
+        <p>Fixed</p>
+        <ul>
+          <li>tray icon system theme now follows the Windows mode used by the taskbar instead of the default app mode</li>
+          <li>Do Not Disturb no longer stays active when Windows Focus Assist is unsupported</li>
+          <li>improve LXQt DND detection</li>
+          <li>snap build</li>
+        </ul>
+      </description>
+    </release>
+    <release version="1.22.0" date="2026-07-17">
+      <description>
+        <p>Added</p>
+        <ul>
+          <li>Windows installer now adds <code>stretchly</code> to PATH so CLI commands (e.g. <code>stretchly pause</code>) can be run from any terminal without specifying the full executable path</li>
+          <li>advanced option <code>breakContentScreen</code> to show break countdown/idea only on the primary, cursor, or a specific screen while other screens stay blanked</li>
+          <li>advanced option <code>trayIconThemeSource</code> (<code>system</code>, <code>light</code>, or <code>dark</code>) to set the tray icon's light or dark variant</li>
+          <li>advanced options <code>monitorDndCheckInterval</code> and <code>naturalBreaksCheckInterval</code> to tune how often Do Not Disturb and idle time are checked</li>
+        </ul>
+        <p>Changed</p>
+        <ul>
+          <li>tray icon now follows the light/dark theme automatically; the manual "Inverted Monochrome" option was removed</li>
+          <li>improved tray icons</li>
+          <li>reduced background polling for Do Not Disturb, natural breaks, and app exclusions to 2 seconds to lower energy usage (<code>appExclusionsCheckInterval</code> default raised from <code>1000</code> to <code>2000</code>)</li>
+          <li>reduced CPU and energy usage during breaks</li>
+          <li>Do Not Disturb, natural breaks, and app exclusion monitoring are stopped while breaks are paused, to lower energy usage</li>
+          <li>disable new end break shortcut registrations on native Wayland, where they could remain active after breaks and block the shortcut in other apps</li>
+        </ul>
+        <p>Fixed</p>
+        <ul>
+          <li>fix Windows notifications not using Stretchly's name and icon when started via the <code>stretchly</code> command</li>
+          <li>fix crashes on system unlock</li>
+          <li>fix window icon turning monochrome with the monochrome tray icon setting</li>
+          <li>fix custom title for Mini break from command line</li>
+          <li>fix repeated crash windows after an error</li>
+          <li>improve double-click error prevention in breaks</li>
+          <li>fix fullscreen breaks dropping out of their Space after a few seconds on macOS</li>
+          <li>fix app exclusion state not updating in some cases</li>
+          <li>fix text selection on break screens allowing escape via the macOS force-click dictionary</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.21.0" date="2026-04-25">
       <description>
         <p>Added</p>

@@ -5,6 +5,8 @@ import dbus from '@particle/dbus-next'
 import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { isAbsolute, join } from 'node:path'
 
 class DndManager extends EventEmitter {
   constructor (settings) {
@@ -113,8 +115,13 @@ class DndManager extends EventEmitter {
           this._logErrorOnce('mate', e)
         }
         break
-      case de.includes('lxqt'):
-        return await this._getConfigValue('~/.config/lxqt/notifications.conf', 'doNotDisturb')
+      case de.includes('lxqt'): {
+        const configHome = process.env.XDG_CONFIG_HOME
+        return await this._getConfigValue(
+          join(configHome && isAbsolute(configHome) ? configHome : join(homedir(), '.config'), 'lxqt', 'notifications.conf'),
+          'doNotDisturb'
+        )
+      }
       default:
         if (!this._unsupDEErrorShown) {
           log.info(`Stretchly: ${this._desktopEnvironment} not supported for DND detection, yet.`)
@@ -142,7 +149,7 @@ class DndManager extends EventEmitter {
         try {
           wfa = getFocusAssist().value
         } catch (e) { wfa = -1 } // getFocusAssist() throw an error if OS isn't windows
-        return wfa !== -1 && wfa !== 0
+        return wfa === 1 || wfa === 2
       } else if (process.platform === 'darwin') {
         const macOSMajorVersion = parseInt(process.getSystemVersion().split('.')[0])
         let cmd = ''

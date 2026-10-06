@@ -58,7 +58,11 @@
       "greenClouds": "ابرهای سبز",
       "appearance": "ظاهر برنامه:",
       "reverie": "خیال",
-      "silence": "ساکت"
+      "silence": "ساکت",
+      "trayIconStyleLabel": "سبک:",
+      "trayIconStyleDefault": "پیش‌فرض",
+      "trayIconStyleTime": "زمان استراحت است",
+      "trayIconStyleProgress": "پیشرفت تا زمان استراحت"
     },
     "heart": {
       "syncPreferences": "تنظیمات همگام‌سازی",
@@ -167,8 +171,8 @@
     "pauseAfter": "متوقف کن بعد از:",
     "naturalBreaksInfo": "اگر در تنظیمات اصلی گزینه بررسی زمان بیکاری سیستم فعال است، شما می‌توانید مدت زمانی که پس از آن استراحت‌ها باید متوقف شوند را مشخص کنید.",
     "naturalBreaks": "استراحت‌های طبیعی:",
-    "longBreakStartSound": "صدای پایان استراحت را در آغاز استراحت‌های طولانی هم پخش کن",
-    "miniBreakStartSound": "در شروع استراحت‌های کوتاه هم صدای پایان استراحت را پخش کن",
+    "longBreakStartSound": "در آغاز استراحت‌های طولانی صدا را پخش کن",
+    "miniBreakStartSound": "در شروع استراحت‌های کوتاه صدا را پخش کن",
     "volume": "بلندی:",
     "sounds": "صداها:",
     "breakWindowHeight": "ارتفاع:",

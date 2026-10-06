@@ -32,6 +32,10 @@ function exposeBreaks (type) {
     finishBreak: (manualAwaiting) => ipcRenderer.send(`finish-${type}-break`, false, manualAwaiting),
     postponeBreak: () => ipcRenderer.send(`postpone-${type}-break`),
     signalLoaded: () => ipcRenderer.send(`${type}-break-loaded`),
+    resizeWindow: (height) => ipcRenderer.invoke('resize-break-window', height),
+    getPointerPosition: () => ipcRenderer.invoke('get-break-pointer-position'),
+    setClickThrough: (ignore) => ipcRenderer.send('set-break-click-through', ignore),
+    onClickThroughChanged: (callback) => ipcRenderer.on('break-click-through-changed', (_e, enabled) => callback(enabled)),
     onEnterManualAwait: (callback) => ipcRenderer.on('enter-manual-await', (_e, which) => callback(which)),
     sanitizeIdea: (value) => sanitizeIdea(value)
   })
