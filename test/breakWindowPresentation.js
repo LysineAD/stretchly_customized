@@ -11,7 +11,6 @@ vi.mock('electron', () => ({
 describe('break window presentation IPC', () => {
   let window
   let values
-  let resize
   let input
 
   beforeEach(() => {
@@ -20,6 +19,8 @@ describe('break window presentation IPC', () => {
     window = {
       getBounds: () => ({ x: 1920, y: 0, width: 640, height: 480 }),
       setBounds: vi.fn(),
+      setSize: vi.fn(),
+      setResizable: vi.fn(),
       setIgnoreMouseEvents: vi.fn(),
       isDestroyed: vi.fn(() => false),
       webContents: { send: vi.fn() }
@@ -28,7 +29,6 @@ describe('break window presentation IPC', () => {
       bounds: { x: 1920, y: 0, width: 1920, height: 1080 }
     })
     registerBreakWindowPresentationHandlers()
-    resize = ipcMain.handle.mock.calls.find(([name]) => name === 'resize-break-window')[1]
     input = ipcMain.on.mock.calls.find(([name]) => name === 'set-break-click-through')[1]
   })
 
@@ -38,31 +38,23 @@ describe('break window presentation IPC', () => {
     expect(pointer({ sender: { window } })).toEqual({ x: 580, y: 320 })
     expect(pointer({ sender: { window: {} } })).toBeNull()
   })
+  it('applies fixed dimensions before locking the native window size', () => {
+    expect(window.setResizable.mock.calls).toEqual([[true], [false]])
+    expect(window.setSize).toHaveBeenCalledWith(860, 720)
+    expect(window.setResizable.mock.invocationCallOrder[0]).toBeLessThan(window.setSize.mock.invocationCallOrder[0])
+    expect(window.setSize.mock.invocationCallOrder[0]).toBeLessThan(window.setResizable.mock.invocationCallOrder[1])
+  })
+
   it('enables click-through before a window is shown', () => {
     expect(window.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true })
   })
 
-  it('does not let unrelated renderer windows change break presentation', () => {
-    const otherWindow = { setBounds: vi.fn(), setIgnoreMouseEvents: vi.fn() }
-    const event = { sender: { window: otherWindow } }
-    resize(event, 280)
-    input(event, false)
-    expect(otherWindow.setBounds).not.toHaveBeenCalled()
+  it('does not expose content-driven resizing and rejects unrelated input senders', () => {
+    expect(ipcMain.handle.mock.calls.some(([name]) => name === 'resize-break-window')).toBe(false)
+    const otherWindow = { setIgnoreMouseEvents: vi.fn() }
+    input({ sender: { window: otherWindow } }, false)
     expect(otherWindow.setIgnoreMouseEvents).not.toHaveBeenCalled()
     expect(BrowserWindow.fromWebContents).toHaveBeenCalled()
-  })
-
-  it('resizes only Compact windows and rejects invalid sizes', () => {
-    const event = { sender: { window } }
-    for (const height of [NaN, Infinity, -5, 0, '300']) resize(event, height)
-    expect(window.setBounds).not.toHaveBeenCalled()
-    resize(event, 280)
-    expect(window.setBounds).toHaveBeenCalledWith({ x: 2560, y: 400, width: 640, height: 280 })
-    const regular = { ...window, setBounds: vi.fn() }
-    values.compactBreaks = false
-    configureBreakWindowPresentation(regular, { get: key => values[key] }, { bounds: { x: 0, y: 0, width: 1920, height: 1080 } })
-    resize({ sender: { window: regular } }, 400)
-    expect(regular.setBounds).not.toHaveBeenCalled()
   })
 
   it('cannot reenable click-through after the checkbox is disabled', () => {

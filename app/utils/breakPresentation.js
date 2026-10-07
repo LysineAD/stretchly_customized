@@ -7,8 +7,6 @@ export default async function initializeBreakPresentation () {
   let clickThrough = initialClickThrough
   let lastIgnore = null
   let pointer = null
-  let lastHeight = null
-  let lastWidth = null
   const interactiveSelector = '#start, #postpone, #close, #finish, .break-idea a, .break-text a, .microbreak-idea a'
 
   const updateInput = () => {
@@ -30,26 +28,7 @@ export default async function initializeBreakPresentation () {
     }
   }
 
-  const resize = () => {
-    if (!compact) return
-    const height = Math.ceil(content.scrollHeight)
-    if (height !== lastHeight || content.clientWidth !== lastWidth) {
-      lastHeight = height
-      lastWidth = content.clientWidth
-      window.breaks.resizeWindow(height)
-    }
-  }
-
-  if (compact) {
-    document.body.classList.add('compact-break')
-    await document.fonts.ready
-    lastHeight = Math.ceil(content.scrollHeight)
-    lastWidth = content.clientWidth
-    await window.breaks.resizeWindow(lastHeight)
-    const resizeObserver = new window.ResizeObserver(resize)
-    resizeObserver.observe(content)
-    resize()
-  }
+  if (compact) document.body.classList.add('compact-break')
 
   document.addEventListener('mousemove', event => {
     pointer = { x: event.clientX, y: event.clientY }
@@ -60,7 +39,6 @@ export default async function initializeBreakPresentation () {
     updateInput()
   })
   const observer = new window.MutationObserver(() => {
-    resize()
     updateInput()
   })
   observer.observe(content, { attributes: true, childList: true, characterData: true, subtree: true })

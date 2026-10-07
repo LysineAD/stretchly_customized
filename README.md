@@ -168,15 +168,13 @@ Type `stretchly help` to get a list of all commands and options available as wel
 
 ## Customized Windows build
 
-This fork includes Extended breaks and is based on Stretchly 1.22.1. In Preferences, choose Window, Full screen, or Compact. Compact centers a content-fitting reminder on each selected monitor and retains the existing advice font sizes and line spacing. Enable "Allow clicks through break windows" to pass mouse input to the application underneath; visible break controls and advice links remain clickable. Both additions are disabled by default so existing preferences keep their display behavior.
+This fork includes Extended breaks and is based on Stretchly 1.22.1. Preferences offers Window, Full screen, or **Compact**. Compact uses a fixed **860 × 720 logical-pixel** window centered on each selected monitor, with the original advice typography. Smaller work areas clamp that size. **Allow clicks through break windows** applies to all three display choices; visible controls and links remain clickable.
 
-Enable **Start breaks manually** in Preferences to display a reminder when a Mini, Long, or Extended break is due and wait without consuming any break time. Click **Start break**, or press the **Start break shortcut** (default **Ctrl+Alt+S** on Windows), to perform the same action. Every selected monitor mirrors the reminder and countdown. The shortcut can be changed or cleared in Preferences; a conflict reports an error and leaves the previous shortcut saved. Skip, Postpone, and the pre-break notification preferences retain their existing behavior. Manual start is disabled by default and changes apply to the next reminder.
+Enable **Start breaks manually** to show a waiting reminder. **Start break** and the existing **break shortcut** (default **Ctrl+X** on Windows) start the same countdown on all selected monitors. After Start, that same shortcut follows the existing Postpone/Skip rules. Edit or clear it in Preferences; invalid or unavailable combinations leave the previous saved value intact. Three sliders set the maximum wait before auto-start: Mini **20 seconds**, Long **60 seconds**, Extended **120 seconds** by default; **0 waits indefinitely**. The full configured break duration follows Start. Before-break notifications remain independent. Manual start defaults off; mode/wait changes apply to the next reminder.
 
-Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized). This repository retains the original Extended breaks fork history.
+Strict mode hides on-window Skip. The tray always remains available for intentional **Skip current break**, Pause, Preferences and Quit. Preferences uses scrolling and two columns, switching to one column on narrow windows.
 
-To build the local Windows application, run `npm ci` followed by `npm run pack -- --win --x64`. Copy the complete `dist/win-unpacked` folder to `D:\Projects\Stretchly_Customized` and run `Stretchly Customized.exe`. This customization was AI-assisted.
-
-Validation uses `npm run lint` and `npm test -- --coverage.enabled=false`. On Windows, `electron scripts/check-break-display.mjs dist/win-unpacked/resources/app.asar` checks all display sizes; add `--manual-start` to check waiting reminders and the Start button. `node scripts/check-manual-start.mjs dist/win-unpacked` checks the packaged app on two monitors with isolated profiles and sends Ctrl+Alt+F24 to test the native global shortcut. `node scripts/check-packaged-start.mjs dist/win-unpacked` checks Preferences and shortcut validation in an isolated profile.
+Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), retaining the original Extended fork history. See the [customization inventory](CUSTOMIZATIONS.md) for all retained features and the [quick update/build guide](UPDATING.md) for merging upstream, verification and replacing the ready-to-run app in `D:\Projects\Stretchly_Customized`. This customization was AI-assisted.
 
 ## Preferences
 
@@ -488,8 +486,8 @@ To hide Stretchly icon in menubar/tray, set the value of `showTrayIcon` from `tr
 
 Note that this will disable graphical way of opening Stretchly Preferences. To access Preferences, you will have to use command line options (ie: `stretchly preferences` on Linux).
 
-#### Show tray menu in Strict Mode
-If you want to show tray menu even while in Strict mode, set `showTrayMenuInStrictMode` to `true`.
+#### Tray menu in Strict Mode
+This Customized fork always keeps the tray menu available, including intentional Skip, Pause, Preferences and Quit. The old `showTrayMenuInStrictMode` setting is ignored.
 
 #### Show custom message in Preferences
 If you want to show custom message in Preferences, set `customPreferencesMessage` to string of your liking.

@@ -6,13 +6,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
-- Optional manual start for Mini, Long, and Extended breaks, using a Start break button or the same action through a configurable global shortcut.
-- Compact break windows that fit their content while retaining the advice typography.
-- Optional click-through for Window, Full screen, and Compact, with visible break controls remaining clickable.
+- Optional manual start for Mini, Long, and Extended breaks using a Start button and the existing global break shortcut.
+- Separate auto-start wait sliders for each break type, with defaults of 20, 60 and 120 seconds; 0 waits indefinitely.
+- Fixed 860 × 720 logical-pixel Compact windows that retain advice typography.
+- Optional click-through for Window, Full screen, and Compact, with visible controls remaining clickable.
+- Intentional tray Skip during strict breaks, with all tray actions and Quit always accessible.
+- Customization inventory and upstream update/build guide.
 - Local Windows builds are named Stretchly Customized.
 
+### Changed
+- The existing break shortcut starts waiting breaks, then performs its original Postpone/Skip action after Start; the separate Start shortcut is removed.
+- Preferences uses scrolling, bounded window dimensions and responsive cards in two columns.
+
 ### Fixed
-- Compact reminders keep a stable text width while resizing to avoid intermittent scrollbar wrapping.
+- Compact windows keep one size across advice and countdown phases.
+- Strict mode no longer removes tray controls or prevents intentional Quit.
 
 ## [1.22.1] - 2026-08-13
 ### Fixed

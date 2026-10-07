@@ -9,7 +9,6 @@ const versionChecker = new VersionChecker()
 let eventsAttached = false
 
 window.onload = async (e) => {
-  const bounds = await window.stretchly.getWindowBounds()
   const settings = await window.settings.currentSettings()
   settings.breakDisplayMode = getBreakDisplayMode(settings)
   if (settings.disableAppUpdateFeatures) {
@@ -20,7 +19,6 @@ window.onload = async (e) => {
     document.querySelectorAll('[data-strict-mode]').forEach(element => {
       element.classList.add('hidden')
     })
-    document.querySelector('#enablePostponeLong').closest('div').style.marginBottom = '56px'
   }
 
   if (settings.hidePreferencesFileLocation) {
@@ -30,7 +28,6 @@ window.onload = async (e) => {
   }
 
   new HtmlTranslate(document).translate()
-  setWindowHeight()
   setTimeout(() => { eventsAttached = true }, 500)
 
   if (settings.customPreferencesMessage) {
@@ -96,7 +93,6 @@ window.onload = async (e) => {
         document.querySelector('#windowsStore').innerHTML = await window.runtime.windowsStore() || false
         document.querySelector('#windowsPortable').innerHTML = await window.runtime.windowsPortable() || false
       }
-      setWindowHeight()
     }
   }
 
@@ -112,7 +108,6 @@ window.onload = async (e) => {
       document.querySelector('#longBreakEvery').closest('div').querySelector('output')
         .innerHTML = await window.i18next.t('utils.minutes', { count: parseInt(realBreakInterval()) })
     })
-    setWindowHeight()
   })
 
   window.stretchly.onEnableContributorPreferences(() => {
@@ -129,7 +124,6 @@ window.onload = async (e) => {
     document.querySelectorAll('.authenticate').forEach((item) => {
       item.classList.add('hidden')
     })
-    setWindowHeight()
   }
 
   if (await window.global.getValue('isContributor')) {
@@ -166,6 +160,7 @@ window.onload = async (e) => {
       })
       event.target.closest('a').classList.add('active')
 
+      document.body.scrollTop = 0
       const toBeDisplayed = document.querySelector(`.${event.target.closest('[data-section]').getAttribute('data-section')}`)
       document.querySelectorAll('body > div:not(.custom-message)').forEach(section => {
         if (section !== toBeDisplayed) {
@@ -176,7 +171,6 @@ window.onload = async (e) => {
       })
 
       setSameWidths()
-      setWindowHeight()
     }
   })
 
@@ -210,15 +204,14 @@ window.onload = async (e) => {
     }
   })
 
-  const startShortcutInput = document.querySelector('#startBreakShortcut')
-  startShortcutInput.value = settings.startBreakShortcut
+  const breakShortcutInput = document.querySelector('#endBreakShortcut')
+  breakShortcutInput.value = settings.endBreakShortcut
   if (!eventsAttached) {
-    startShortcutInput.onchange = async () => {
-      const saved = await window.settings.saveStartShortcut(startShortcutInput.value)
-      document.querySelector('#startShortcutError').classList.toggle('hidden', saved)
-      startShortcutInput.setAttribute('aria-invalid', String(!saved))
-      if (!saved) startShortcutInput.value = await window.settings.get('startBreakShortcut')
-      setWindowHeight()
+    breakShortcutInput.onchange = async () => {
+      const saved = await window.settings.saveBreakShortcut(breakShortcutInput.value)
+      document.querySelector('#breakShortcutError').classList.toggle('hidden', saved)
+      breakShortcutInput.setAttribute('aria-invalid', String(!saved))
+      if (!saved) breakShortcutInput.value = await window.settings.get('endBreakShortcut')
     }
   }
 
@@ -266,8 +259,6 @@ window.onload = async (e) => {
     }
   })
 
-  setWindowHeight()
-
   document.querySelectorAll('.enabletype').forEach((element) => {
     element.onclick = async (event) => {
       const enabletypeChecked = document.querySelectorAll('.enabletype:checked')
@@ -279,7 +270,7 @@ window.onload = async (e) => {
     }
   })
 
-  document.querySelector('.settings > div > button').onclick = (event) => {
+  document.querySelector('#restoreDefaults').onclick = (event) => {
     window.stretchly.restoreDefaults()
   }
 
@@ -305,7 +296,6 @@ window.onload = async (e) => {
     document.querySelectorAll('.authenticate').forEach((item) => {
       item.classList.remove('hidden')
     })
-    setWindowHeight()
   }
 
   document.querySelectorAll('.authenticate a').forEach((button) => {
@@ -327,29 +317,6 @@ window.onload = async (e) => {
       })
   }
 
-  function setWindowHeight () {
-    const classes = document.querySelector('body').classList
-    const scrollHeight = document.querySelector('body').scrollHeight
-    const availHeight = window.screen.availHeight
-    let height = null
-    if (classes.contains('win32')) {
-      if (scrollHeight + 40 > availHeight) {
-        height = availHeight
-      } else {
-        height = scrollHeight + 40
-      }
-    } else {
-      if (scrollHeight + 32 > availHeight) {
-        height = availHeight
-      } else {
-        height = scrollHeight + 32
-      }
-    }
-    if (height) {
-      window.stretchly.setWindowSize(bounds.width, height)
-    }
-  }
-
   function realBreakInterval () {
     const microbreakInterval = document.querySelector('#miniBreakEvery').value * 1
     const breakInterval = document.querySelector('#longBreakEvery').value * 1
@@ -357,6 +324,7 @@ window.onload = async (e) => {
   }
 
   async function formatRangeOutput (unit, value) {
+    if (unit === 'autoStartSeconds') return window.i18next.t(value === '0' || value === 0 ? 'preferences.settings.autoStartOff' : 'preferences.settings.autoStartSeconds', { seconds: value })
     if (unit === 'longBreaks') {
       return window.i18next.t('preferences.schedule.longBreakCount', { count: parseInt(value) })
     }

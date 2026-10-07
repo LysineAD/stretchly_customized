@@ -404,7 +404,89 @@ body[dir=rtl] .heart > .authenticate > a {
   padding-left: 20px;
 }
 
-#startBreakShortcut {
+
+html {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.navigation {
+  position: sticky;
+  top: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.settings,
+.schedule {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding: 20px 24px 24px;
+}
+
+.settings > .preference-card,
+.schedule > .preference-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  grid-column: auto;
+  grid-row: auto;
+  padding: 20px;
+  text-align: start;
+  min-width: 0;
+  border: 1px solid var(--main-color);
+  border-radius: 8px;
+  align-self: start;
+  margin: 0;
+}
+
+.preference-card h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 4px;
+}
+
+.preference-card > :last-child {
+  margin-bottom: 0;
+}
+
+.preference-card p,
+.schedule .preference-card > div > p {
+  max-width: none;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.preference-card label {
+  line-height: 1.5;
+}
+
+.preference-card input[type=range] {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 10px 0;
+}
+
+.preference-card output {
+  display: block;
+  text-align: end;
+}
+
+.display-options label {
+  margin-inline-end: 16px;
+}
+
+#endBreakShortcut {
   display: block;
   box-sizing: border-box;
   max-width: 100%;
@@ -417,12 +499,20 @@ body[dir=rtl] .heart > .authenticate > a {
   border-radius: 4px;
 }
 
-#startShortcutHelp,
-#startShortcutError {
+#breakShortcutHelp,
+#breakShortcutError {
   margin-top: 8px;
   line-height: 1.5;
 }
 
-#startShortcutError {
+#breakShortcutError {
   font-weight: bold;
+}
+
+@media (max-width: 760px) {
+  .settings,
+  .schedule {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 16px;
+  }
 }

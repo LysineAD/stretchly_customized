@@ -6,11 +6,20 @@ import { createServer } from 'node:net'
 import { promisify } from 'node:util'
 
 const folder = resolve(process.argv[2] || 'dist/win-unpacked')
-const output = resolve('.scratch/manual-start-check')
+const strictQuitCheck = process.argv.includes('--strict-quit')
+const autoStartCheck = process.argv.includes('--auto-start')
+const output = resolve(strictQuitCheck ? '.scratch/strict-quit-check' : autoStartCheck ? '.scratch/auto-start-check' : '.scratch/manual-start-check')
 const executable = join(folder, 'Stretchly Customized.exe')
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const run = promisify(execFile)
 const reports = []
+const reservePort = async () => {
+  const server = createServer()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  await new Promise(resolve => server.close(resolve))
+  return port
+}
 
 const pressShortcut = async () => {
   const command = 'Add-Type -TypeDefinition \'using System; using System.Runtime.InteropServices; public static class BreakShortcutProbe { [DllImport("user32.dll")] public static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra); }\'; try { [BreakShortcutProbe]::keybd_event(0x11,0,0,[UIntPtr]::Zero); [BreakShortcutProbe]::keybd_event(0x12,0,0,[UIntPtr]::Zero); [BreakShortcutProbe]::keybd_event(0x87,0,0,[UIntPtr]::Zero); Start-Sleep -Milliseconds 80 } finally { [BreakShortcutProbe]::keybd_event(0x87,0,2,[UIntPtr]::Zero); [BreakShortcutProbe]::keybd_event(0x12,0,2,[UIntPtr]::Zero); [BreakShortcutProbe]::keybd_event(0x11,0,2,[UIntPtr]::Zero) }'
@@ -54,7 +63,10 @@ for (const type of ['mini', 'long', 'extended']) {
     notifyNewVersion: false,
     language: 'en',
     manualBreakStart: true,
-    startBreakShortcut: 'Ctrl+Alt+F24',
+    endBreakShortcut: 'Ctrl+Alt+F24',
+    miniBreakAutoStartDelay: autoStartCheck ? 8000 : 0,
+    longBreakAutoStartDelay: autoStartCheck ? 8000 : 0,
+    extendedBreakAutoStartDelay: autoStartCheck ? 8000 : 0,
     compactBreaks: true,
     breakClickThrough: true,
     allScreens: true,
@@ -70,20 +82,21 @@ for (const type of ['mini', 'long', 'extended']) {
     extendedBreakInterval: 1,
     breakInterval: 0,
     microbreakInterval: type === 'extended' ? 1500 : 300000,
-    microbreakDuration: 3000,
-    breakDuration: 3000,
-    extendedBreakDuration: 3000,
+    microbreakDuration: strictQuitCheck ? 30000 : 3000,
+    breakDuration: strictQuitCheck ? 30000 : 3000,
+    extendedBreakDuration: strictQuitCheck ? 30000 : 3000,
+    microbreakPostponableDurationPercent: 100,
+    breakPostponableDurationPercent: 100,
+    extendedBreakPostponableDurationPercent: 100,
     microbreakStrictMode: true,
     breakStrictMode: true,
     extendedBreakStrictMode: true
   }
   writeFileSync(join(data, 'config.json'), JSON.stringify(config))
-  const server = createServer()
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-  const port = server.address().port
-  await new Promise(resolve => server.close(resolve))
+  const port = await reservePort()
+  const mainPort = strictQuitCheck ? await reservePort() : null
   const env = { ...process.env, PORTABLE_EXECUTABLE_DIR: profile }
-  const child = spawn(executable, ['--remote-debugging-port=' + port], { windowsHide: true, env, stdio: 'ignore' })
+  const child = spawn(executable, ['--remote-debugging-port=' + port, ...(mainPort ? ['--inspect=127.0.0.1:' + mainPort] : [])], { windowsHide: true, env, stdio: 'ignore' })
   const connections = []
   try {
     const targets = async () => (await fetch('http://127.0.0.1:' + port + '/json')).json()
@@ -105,6 +118,7 @@ for (const type of ['mini', 'long', 'extended']) {
     for (const target of breaks) connections.push(await connect(target))
     const stateExpression = `JSON.stringify({
       started: (await window.breaks.sendBreakData())[1],
+      deadline: (await window.breaks.sendBreakData())[9],
       startVisible: getComputedStyle(document.querySelector('#start')).display !== 'none',
       startText: document.querySelector('#start').textContent,
       hint: document.querySelector('#start-hint').textContent,
@@ -112,24 +126,40 @@ for (const type of ['mini', 'long', 'extended']) {
       closeVisible: getComputedStyle(document.querySelector('#close')).display !== 'none',
       postponeVisible: getComputedStyle(document.querySelector('#postpone')).display !== 'none',
       advice: document.querySelector('.microbreak-idea, .break-idea').textContent + (document.querySelector('.break-text')?.textContent || ''),
-      compact: document.body.classList.contains('compact-break')
+      compact: document.body.classList.contains('compact-break'),
+      viewport: { width: innerWidth, height: innerHeight }
     })`
-    await sleep(3500)
+    if (autoStartCheck) {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const states = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
+        if (states.every(state => state.deadline !== null && /^Auto-starts/.test(state.hint))) break
+        await sleep(100)
+      }
+    } else await sleep(3500)
     const waiting = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
     for (const state of waiting) {
       assert.equal(state.started, null)
       assert.equal(state.startVisible, true)
       assert.equal(state.startText, 'Start break')
-      assert.equal(state.hint, 'Ready when you are')
+      if (autoStartCheck) assert.match(state.hint, /^Auto-starts in \d+ s$/)
+      else assert.equal(state.hint, 'Ready when you are')
       assert.equal(state.progress, 10000)
       assert.equal(state.closeVisible, false)
       assert.equal(state.postponeVisible, true)
       assert.equal(state.compact, true)
+      assert.ok(Math.abs(state.viewport.width - 860) <= 4, JSON.stringify(state.viewport))
+      assert.equal(state.viewport.height, 720)
       assert.equal(state.advice, waiting[0].advice)
     }
+    if (reports.length) assert.deepEqual(waiting.map(state => state.viewport), reports[0].waiting.map(state => state.viewport), 'All break types must use the same fixed size')
     const image = await connections[0].send('Page.captureScreenshot', { format: 'png' })
     writeFileSync(join(profile, 'waiting.png'), Buffer.from(image.data, 'base64'))
-    if (type === 'mini') await connections[connections.length - 1].evaluate("document.querySelector('#start').click()")
+    if (autoStartCheck) {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (JSON.parse(await connections[0].evaluate(stateExpression)).started !== null) break
+        await sleep(100)
+      }
+    } else if (type === 'mini') await connections[connections.length - 1].evaluate("document.querySelector('#start').click()")
     else await pressShortcut()
     await sleep(200)
     const running = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
@@ -137,6 +167,7 @@ for (const type of ['mini', 'long', 'extended']) {
       assert.ok(state.started > 0)
       assert.equal(state.started, running[0].started)
       assert.equal(state.startVisible, false)
+      assert.deepEqual(state.viewport, waiting[running.indexOf(state)].viewport)
       assert.ok(state.progress < 10000 && state.progress > 0)
     }
     await connections[0].evaluate('window.breaks.startBreak()')
@@ -144,12 +175,28 @@ for (const type of ['mini', 'long', 'extended']) {
     const repeat = JSON.parse(await connections[0].evaluate(stateExpression))
     assert.equal(repeat.started, running[0].started)
     assert.ok(repeat.progress <= running[0].progress)
-    await sleep(3100)
-    assert.equal((await targets()).filter(target => target.url.endsWith('/microbreak.html') || target.url.endsWith('/break.html')).length, 0)
+    if (strictQuitCheck) {
+      const mainTarget = (await (await fetch('http://127.0.0.1:' + mainPort + '/json')).json())[0]
+      const inspector = await connect(mainTarget)
+      connections.push(inspector)
+      await inspector.evaluate("(() => { setTimeout(() => process.getBuiltinModule('module').createRequire(process.execPath)('electron').app.quit(), 50); return true })()")
+      inspector.socket.close()
+      await Promise.race([
+        new Promise(resolve => child.exitCode !== null ? resolve() : child.once('exit', resolve)),
+        sleep(4000).then(() => { throw new Error('Strict mode prevented intentional app Quit') })
+      ])
+      assert.equal(child.exitCode, 0)
+    } else if (autoStartCheck) {
+      await sleep(2100)
+      assert.ok((await targets()).filter(target => target.url.endsWith('/microbreak.html') || target.url.endsWith('/break.html')).length >= 2, 'Waiting must not consume the full break duration')
+      await sleep(1000)
+    } else await pressShortcut()
+    await sleep(200)
+    if (!strictQuitCheck) assert.equal((await targets()).filter(target => target.url.endsWith('/microbreak.html') || target.url.endsWith('/break.html')).length, 0)
     const saved = JSON.parse(readFileSync(join(data, 'config.json'), 'utf8'))
     for (const key of Object.keys(config)) assert.deepEqual(saved[key], config[key], key)
-    reports.push({ type, monitors: connections.length, waiting, running, trigger: type === 'mini' ? 'button' : 'native global shortcut', repeatedStartIgnored: true, completedNormally: true })
-    console.log(type + ': wait, mirrored start, repeated Start, and completion passed')
+    reports.push({ type, monitors: waiting.length, waiting, running, trigger: autoStartCheck ? 'auto-start deadline' : type === 'mini' ? 'button' : 'native global shortcut', repeatedStartIgnored: true, sameShortcutPostponesAfterStart: !autoStartCheck && !strictQuitCheck, intentionalStrictQuit: strictQuitCheck, fullDurationAfterAutoStart: autoStartCheck })
+    console.log(type + ': ' + (strictQuitCheck ? 'intentional strict-mode Quit' : autoStartCheck ? 'auto-start and full duration' : 'wait, mirrored start, repeated Start, and same-key Postpone') + ' passed')
   } finally {
     for (const connection of connections) connection.socket.close()
     child.kill()

@@ -31,6 +31,7 @@ import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
 import BreakStartController from './utils/breakStartController.js'
+import BreakActionShortcut from './utils/breakActionShortcut.js'
 import { getCompactBreakBounds, setBreakDisplayMode } from './utils/breakDisplaySettings.js'
 import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough } from './utils/breakWindowPresentation.js'
 
@@ -97,7 +98,9 @@ let updateChecker
 let currentTrayIconPath = null
 let currentTrayMenuTemplate = null
 let trayUpdateIntervalObj = null
-const breakStartController = new BreakStartController(globalShortcut)
+const breakStartController = new BreakStartController()
+const breakActionShortcut = new BreakActionShortcut(globalShortcut)
+let isQuitting = false
 let endBreakShortcutSupported
 
 if (insideWindowsPortable()) {
@@ -217,23 +220,14 @@ app.on('ready', initialize)
 app.on('window-all-closed', () => {
   // do nothing, so app wont get closed
 })
-app.on('before-quit', (event) => {
-  if ((breakPlanner?.scheduler?.reference === 'finishMicrobreak' && settings?.get('microbreakStrictMode')) ||
-      (breakPlanner?.scheduler?.reference === 'finishBreak' && settings?.get('breakStrictMode')) ||
-      (breakPlanner?.scheduler?.reference === 'finishExtendedBreak' && settings?.get('extendedBreakStrictMode'))
-  ) {
-    log.info('Stretchly: preventing app closure (in break with strict mode)')
-    event.preventDefault()
-  } else {
-    globalShortcut.unregisterAll()
-    // Clean up D-Bus connections
-    if (autostartManager) {
-      autostartManager.disconnect()
-    }
-    if (processWin && !processWin.isDestroyed()) {
-      processWin.destroy()
-      processWin = null
-    }
+app.on('before-quit', () => {
+  isQuitting = true
+  breakStartController.clear()
+  globalShortcut.unregisterAll()
+  if (autostartManager) autostartManager.disconnect()
+  if (processWin && !processWin.isDestroyed()) {
+    processWin.destroy()
+    processWin = null
   }
 })
 
@@ -483,10 +477,6 @@ async function initialize (isAppStart = true) {
     functions: { pauseBreaks, resumeBreaks, skipToBreak, skipToMicrobreak, skipToExtendedBreak, resetBreaks }
   })
 
-  if (!configureStartBreakShortcut(settings.get('startBreakShortcut'), settings.get('manualBreakStart'))) {
-    log.warn('Stretchly: Start break shortcut registration failed')
-    dialog.showErrorBox('Stretchly Customized', i18next.t('preferences.settings.startShortcutError'))
-  }
   updateTray()
 }
 
@@ -810,7 +800,7 @@ function startMicrobreak () {
     ? breakStartController.wait('mini', microbreakWins, () => {
       breakPlanner.emit('microbreakStarted', true)
       updateTray()
-    })
+    }, settings.get('miniBreakAutoStartDelay'))
     : null
   if (manualStart) breakPlanner.waitForBreakStart('mini')
 
@@ -828,7 +818,11 @@ function startMicrobreak () {
     const startTime = startSession ? startSession.started : Date.now()
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
-      globalShortcut.register(shortcut, () => {
+      breakActionShortcut.configure(shortcut, () => {
+        if (startSession && startSession.started === null) {
+          breakStartController.start('mini')
+          return
+        }
         log.info('Stretchly: end break shortcut pressed during Mini break')
         const countdownStart = startSession ? startSession.started : startTime
         const passedPercent = countdownStart === null ? 0 : (Date.now() - countdownStart) / breakDuration * 100
@@ -847,7 +841,7 @@ function startMicrobreak () {
     }
     return [idea, startTime, breakDuration, strictMode,
       postponable, postponableDurationPercent,
-      calculateBackgroundColor(settings.get('miniBreakColor')), danger, settings.get('breakHealthMode')]
+      calculateBackgroundColor(settings.get('miniBreakColor')), danger, settings.get('breakHealthMode'), startSession?.deadline ?? null]
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
@@ -896,7 +890,7 @@ function startMicrobreak () {
     let microbreakWinLocal = new BrowserWindow(windowOptions)
     configureBreakWindowPresentation(microbreakWinLocal, settings, displayManager.getTargetDisplay(localDisplayId))
     // seems to help with multiple-displays problems
-    microbreakWinLocal.setSize(windowOptions.width, windowOptions.height)
+    if (!settings.get('compactBreaks')) microbreakWinLocal.setSize(windowOptions.width, windowOptions.height)
 
     microbreakWinLocal.once('ready-to-show', () => {
       log.info('Stretchly: ready-to-show fired')
@@ -922,6 +916,7 @@ function startMicrobreak () {
           microbreakWinLocal.setKiosk(fullscreen)
         }
       }
+      if (localDisplayId === emitOnId && manualStart) breakStartController.arm()
       if (localDisplayId === emitOnId && !manualStart) {
         breakPlanner.emit('microbreakStarted', true)
         log.info('Stretchly: starting Mini break')
@@ -943,7 +938,7 @@ function startMicrobreak () {
     microbreakWinLocal.setAlwaysOnTop(!showBreaksAsRegularWindows, 'pop-up-menu')
     if (microbreakWinLocal) {
       microbreakWinLocal.on('close', (e) => {
-        if (breakPlanner.scheduler.timeLeft > 0 && settings.get('microbreakStrictMode')) {
+        if (!isQuitting && breakPlanner.scheduler.timeLeft > 0 && settings.get('microbreakStrictMode')) {
           log.info('Stretchly: preventing closing break window as in strict mode')
           e.preventDefault()
         }
@@ -1002,7 +997,7 @@ function startBreak (type = 'long') {
     ? breakStartController.wait(bridgeType, breakWindows, () => {
       breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
       updateTray()
-    })
+    }, settings.get(isExtended ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'))
     : null
   if (manualStart) breakPlanner.waitForBreakStart(bridgeType)
 
@@ -1021,7 +1016,11 @@ function startBreak (type = 'long') {
     const startTime = startSession ? startSession.started : Date.now()
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
-      globalShortcut.register(shortcut, () => {
+      breakActionShortcut.configure(shortcut, () => {
+        if (startSession && startSession.started === null) {
+          breakStartController.start(bridgeType)
+          return
+        }
         log.info(`Stretchly: end break shortcut pressed during ${breakLabel} break`)
         const countdownStart = startSession ? startSession.started : startTime
         const passedPercent = countdownStart === null ? 0 : (Date.now() - countdownStart) / breakDuration * 100
@@ -1052,7 +1051,7 @@ function startBreak (type = 'long') {
     }
     return [idea, startTime, breakDuration, strictMode,
       postponable, postponableDurationPercent,
-      calculateBackgroundColor(settings.get('mainColor')), danger, settings.get('breakHealthMode')]
+      calculateBackgroundColor(settings.get('mainColor')), danger, settings.get('breakHealthMode'), startSession?.deadline ?? null]
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
@@ -1101,7 +1100,7 @@ function startBreak (type = 'long') {
     let breakWinLocal = new BrowserWindow(windowOptions)
     configureBreakWindowPresentation(breakWinLocal, settings, displayManager.getTargetDisplay(localDisplayId))
     // seems to help with multiple-displays problems
-    breakWinLocal.setSize(windowOptions.width, windowOptions.height)
+    if (!settings.get('compactBreaks')) breakWinLocal.setSize(windowOptions.width, windowOptions.height)
 
     breakWinLocal.once('ready-to-show', () => {
       log.info('Stretchly: ready-to-show fired')
@@ -1127,6 +1126,7 @@ function startBreak (type = 'long') {
           breakWinLocal.setKiosk(fullscreen)
         }
       }
+      if (localDisplayId === emitOnId && manualStart) breakStartController.arm()
       if (localDisplayId === emitOnId && !manualStart) {
         breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
         log.info(`Stretchly: starting ${breakLabel} break`)
@@ -1149,7 +1149,7 @@ function startBreak (type = 'long') {
     breakWinLocal.setAlwaysOnTop(!showBreaksAsRegularWindows, 'pop-up-menu')
     if (breakWinLocal) {
       breakWinLocal.on('close', (e) => {
-        if (breakPlanner.scheduler.timeLeft > 0 && settings.get(`${settingPrefix}StrictMode`)) {
+        if (!isQuitting && breakPlanner.scheduler.timeLeft > 0 && settings.get(`${settingPrefix}StrictMode`)) {
           log.info('Stretchly: preventing closing break window as in strict mode')
           e.preventDefault()
         }
@@ -1181,9 +1181,7 @@ function startExtendedBreak () {
 
 function breakComplete (shouldPlaySound, windows, breakType) {
   breakStartController.close(windows)
-  if (settings.get('endBreakShortcut') && globalShortcut.isRegistered(settings.get('endBreakShortcut'))) {
-    globalShortcut.unregister(settings.get('endBreakShortcut'))
-  }
+  breakActionShortcut.clear()
   if (shouldPlaySound && !settings.get('silentNotifications')) {
     const audio = breakType === 'mini' ? 'miniBreakAudio' : 'longBreakAudio'
     processWin.webContents.send('play-sound', settings.get(audio), settings.get('volume'))
@@ -1450,19 +1448,19 @@ function createPreferencesWindow () {
     return
   }
   const modalPath = 'file://' + join(__dirname, '/preferences.html')
-  const maxHeight = screen
-    .getDisplayNearestPoint(screen.getCursorScreenPoint())
-    .workAreaSize.height * 0.9
+  const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workAreaSize
+  const width = Math.min(1020, Math.floor(workArea.width * 0.9))
+  const height = Math.min(740, Math.floor(workArea.height * 0.9))
   preferencesWin = new BrowserWindow({
     autoHideMenuBar: true,
     show: false,
-    backgroundThrottling: false,
     icon: windowIconPath(),
-    width: 600,
-    height: 530,
-    maxHeight: Math.round(maxHeight),
-    x: displayManager.getDisplayX(-1, 600),
-    y: displayManager.getDisplayY(-1, 530),
+    width,
+    height,
+    minWidth: Math.min(560, width),
+    minHeight: Math.min(400, height),
+    x: displayManager.getDisplayX(-1, width),
+    y: displayManager.getDisplayY(-1, height),
     backgroundColor: '#EDEDED',
     webPreferences: {
       preload: join(__dirname, './preferences-preload.mjs'),
@@ -1521,6 +1519,19 @@ function updateTray () {
   }
 }
 
+function skipCurrentBreak () {
+  if (microbreakWins) {
+    increaseDanger(1)
+    finishMicrobreak(false)
+  } else if (breakWins) {
+    increaseDanger(2)
+    finishBreak(false)
+  } else if (extendedBreakWins) {
+    increaseDanger(2)
+    finishExtendedBreak(false)
+  }
+}
+
 function getTrayMenuTemplate () {
   const trayMenu = []
 
@@ -1556,15 +1567,8 @@ function getTrayMenuTemplate () {
     })
   }
 
-  if ((breakPlanner.scheduler.reference === 'finishMicrobreak' && settings.get('microbreakStrictMode') &&
-        !settings.get('showTrayMenuInStrictMode')) ||
-      (breakPlanner.scheduler.reference === 'finishBreak' && settings.get('breakStrictMode') &&
-      !settings.get('showTrayMenuInStrictMode')) ||
-      (breakPlanner.scheduler.reference === 'finishExtendedBreak' && settings.get('extendedBreakStrictMode') &&
-      !settings.get('showTrayMenuInStrictMode'))
-  ) {
-    // empty menu, we are in strict mode
-    return trayMenu
+  if (['finishMicrobreak', 'finishBreak', 'finishExtendedBreak'].includes(breakPlanner.scheduler.reference)) {
+    trayMenu.push({ label: i18next.t('main.skipCurrentBreak'), click: skipCurrentBreak })
   }
 
   if (!(breakPlanner.isPaused || breakPlanner.dndManager.isOnDnd || breakPlanner.appExclusionsManager.isSchedulerCleared)) {
@@ -1757,16 +1761,11 @@ ipcMain.on('finish-extended-break', function (event, shouldPlaySound, manualAwai
   finishExtendedBreak(shouldPlaySound)
 })
 
-function configureStartBreakShortcut (shortcut, enabled) {
-  if (breakStartController.conflicts(shortcut, settings.store)) return false
-  return breakStartController.configure(shortcut, enabled)
-}
-
 ipcMain.handle('start-visible-break', (event, type) => breakStartController.start(type, event.sender))
 
-ipcMain.handle('save-start-break-shortcut', (event, value) => {
-  if (!configureStartBreakShortcut(value, settings.get('manualBreakStart'))) return false
-  settings.set('startBreakShortcut', value.trim())
+ipcMain.handle('save-break-shortcut', (event, value) => {
+  if (!breakActionShortcut.configure(value)) return false
+  settings.set('endBreakShortcut', value.trim())
   return true
 })
 
@@ -1774,9 +1773,13 @@ ipcMain.on('save-setting', function (event, key, value) {
   if (key === 'manualBreakStart') {
     if (typeof value !== 'boolean') return
     settings.set(key, value)
-    if (!configureStartBreakShortcut(settings.get('startBreakShortcut'), value)) {
-      dialog.showErrorBox('Stretchly Customized', i18next.t('preferences.settings.startShortcutError'))
-    }
+    return
+  }
+
+  if (['miniBreakAutoStartDelay', 'longBreakAutoStartDelay', 'extendedBreakAutoStartDelay'].includes(key)) {
+    const maximum = key === 'miniBreakAutoStartDelay' ? 120000 : key === 'longBreakAutoStartDelay' ? 900000 : 1800000
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > maximum) return
+    settings.set(key, value)
     return
   }
 

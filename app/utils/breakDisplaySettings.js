@@ -7,11 +7,11 @@ export function setBreakDisplayMode (settings, mode) {
   settings.set({ compactBreaks: mode === 'compact', fullscreen: mode === 'fullscreen' })
 }
 
-export function getCompactBreakBounds (display, contentHeight = 480, contentWidth = 640) {
+export function getCompactBreakBounds (display) {
   const bounds = display.bounds
   const workArea = display.workArea || bounds
-  const width = Math.max(1, Math.min(contentWidth, workArea.width - 32))
-  const height = Math.max(1, Math.min(Math.max(128, Math.ceil(contentHeight)), workArea.height - 32))
+  const width = Math.max(1, Math.min(860, workArea.width - 32))
+  const height = Math.max(1, Math.min(720, workArea.height - 32))
   return {
     x: Math.round(Math.max(workArea.x, Math.min(bounds.x + (bounds.width - width) / 2, workArea.x + workArea.width - width))),
     y: Math.round(Math.max(workArea.y, Math.min(bounds.y + (bounds.height - height) / 2, workArea.y + workArea.height - height))),

@@ -30,7 +30,7 @@ describe('break display preferences', () => {
 describe('compact display placement', () => {
   it('centers on a secondary monitor with a negative origin', () => {
     const display = { bounds: { x: -1920, y: -200, width: 1920, height: 1080 } }
-    expect(getCompactBreakBounds(display, 300.2)).toEqual({ x: -1280, y: 190, width: 640, height: 301 })
+    expect(getCompactBreakBounds(display, 300.2)).toEqual({ x: -1390, y: -20, width: 860, height: 720 })
   })
 
   it('fits inside the usable area of a small scaled monitor', () => {
@@ -46,12 +46,13 @@ describe('compact display placement', () => {
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(display.workArea.y + display.workArea.height)
   })
 
-  it('grows for longer advice without widening to the monitor size', () => {
+  it('keeps one fixed size for every advice and phase', () => {
     const display = { bounds: { x: 1920, y: 0, width: 2560, height: 1440 } }
     const short = getCompactBreakBounds(display, 260)
     const long = getCompactBreakBounds(display, 610)
     expect(short.width).toBe(long.width)
-    expect(long.height).toBe(610)
+    expect(short).toEqual(long)
+    expect(long.height).toBe(720)
     expect(long.y + long.height / 2).toBe(720)
   })
 })

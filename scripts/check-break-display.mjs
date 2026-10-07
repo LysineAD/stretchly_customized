@@ -159,7 +159,8 @@ app.whenReady().then(async () => {
           assert.ok(layout.advice.length > 0)
           if (mode === 'compact') {
             assert.ok(layout.scrollHeight <= layout.clientHeight + 1, 'Bundled advice should fit: ' + JSON.stringify({ layout, bounds: window.getBounds(), contentBounds: window.getContentBounds(), resizeRequests }))
-            const expected = getCompactBreakBounds(display, layout.scrollHeight, window.getBounds().width)
+            assert.equal(resizeRequests.length, 0, 'Compact windows must never resize to their content')
+            const expected = getCompactBreakBounds(display)
             for (const key of ['x', 'y', 'width', 'height']) {
               const native = key === 'width' || key === 'height' ? window.getContentBounds() : window.getBounds()
               assert.ok(Math.abs(native[key] - expected[key]) <= 1, 'Content size and placement should match within native DPI rounding: ' + key + ' ' + JSON.stringify({ type, bounds: window.getBounds(), contentBounds: window.getContentBounds(), minimumSize: window.getMinimumSize(), resizeRequests, expected, layout }))
@@ -225,7 +226,10 @@ app.whenReady().then(async () => {
             assert.equal(await ignoresNativeMouse(overlay), false, 'Start button should receive native input')
             await overlay.webContents.executeJavaScript('document.querySelector("#start").click()')
             await sleep(100)
-            for (const window of windows) assert.equal(await window.webContents.executeJavaScript('document.querySelector("#start").classList.contains("hidden")'), true)
+            for (const window of windows) {
+              assert.equal(await window.webContents.executeJavaScript('document.querySelector("#start").classList.contains("hidden")'), true)
+              if (mode === 'compact') assert.deepEqual(window.getBounds(), reports.find(report => report.mode === mode && report.type === type && report.display === screen.getDisplayMatching(window.getBounds()).id).bounds)
+            }
           }
           const before = actions
           await overlay.webContents.executeJavaScript('document.querySelector("#postpone").click()')

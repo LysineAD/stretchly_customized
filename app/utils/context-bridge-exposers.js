@@ -32,9 +32,9 @@ function exposeBreaks (type) {
     finishBreak: (manualAwaiting) => ipcRenderer.send(`finish-${type}-break`, false, manualAwaiting),
     postponeBreak: () => ipcRenderer.send(`postpone-${type}-break`),
     startBreak: () => ipcRenderer.invoke('start-visible-break', type),
+    onStartDeadline: (callback) => ipcRenderer.on('break-start-deadline', (_e, deadline) => callback(deadline)),
     onCountdownStarted: (callback) => ipcRenderer.on('break-countdown-started', (_e, started) => callback(started)),
     signalLoaded: () => ipcRenderer.send(`${type}-break-loaded`),
-    resizeWindow: (height) => ipcRenderer.invoke('resize-break-window', height),
     getPointerPosition: () => ipcRenderer.invoke('get-break-pointer-position'),
     setClickThrough: (ignore) => ipcRenderer.send('set-break-click-through', ignore),
     onClickThroughChanged: (callback) => ipcRenderer.on('break-click-through-changed', (_e, enabled) => callback(enabled)),
@@ -69,7 +69,7 @@ function exposeSemver () {
 function exposeSettings () {
   contextBridge.exposeInMainWorld('settings', {
     get: (key) => ipcRenderer.invoke('settings-get', key),
-    saveStartShortcut: (value) => ipcRenderer.invoke('save-start-break-shortcut', value),
+    saveBreakShortcut: (value) => ipcRenderer.invoke('save-break-shortcut', value),
     currentSettings: async () => {
       return await ipcRenderer.invoke('current-settings')
     },

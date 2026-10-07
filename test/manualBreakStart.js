@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import BreakStartController from '../app/utils/breakStartController.js'
+import BreakActionShortcut from '../app/utils/breakActionShortcut.js'
 import BreaksPlanner from '../app/breaksPlanner.js'
 import defaultSettings from '../app/utils/defaultSettings.js'
 
@@ -18,7 +19,7 @@ vi.mock('../app/utils/appExclusionsManager.js', async () => {
 })
 
 describe('manual break start', () => {
-  let controller, shortcuts, windows
+  let controller, actionShortcut, shortcuts, windows
   beforeEach(() => {
     vi.useFakeTimers()
     const registered = new Map()
@@ -33,7 +34,8 @@ describe('manual break start', () => {
       isRegistered: key => registered.has(key),
       trigger: key => registered.get(key)?.()
     }
-    controller = new BreakStartController(shortcuts)
+    controller = new BreakStartController()
+    actionShortcut = new BreakActionShortcut(shortcuts)
     windows = [0, 1].map(() => ({ isDestroyed: () => false, webContents: { send: vi.fn() } }))
   })
   afterEach(() => vi.useRealTimers())
@@ -41,13 +43,13 @@ describe('manual break start', () => {
   it.each(['mini', 'long', 'extended'])('starts %s once through the button or the same global action', type => {
     const onStart = vi.fn()
     const session = controller.wait(type, windows, onStart)
-    expect(controller.configure('Ctrl+Alt+S', true)).toBe(true)
+    expect(actionShortcut.configure('Ctrl+X', () => controller.start())).toBe(true)
     vi.advanceTimersByTime(3600000)
     expect(session.started).toBeNull()
     expect(onStart).not.toHaveBeenCalled()
     const first = controller.start(type, windows[1].webContents)
     expect(first).toBe(Date.now())
-    shortcuts.trigger('Ctrl+Alt+S')
+    shortcuts.trigger('Ctrl+X')
     controller.start(type, windows[0].webContents)
     expect(session.started).toBe(first)
     expect(onStart).toHaveBeenCalledTimes(1)
@@ -57,8 +59,8 @@ describe('manual break start', () => {
   it('starts from the global shortcut without a focused renderer', () => {
     const onStart = vi.fn()
     controller.wait('mini', windows, onStart)
-    controller.configure('Ctrl+Alt+S', true)
-    shortcuts.trigger('Ctrl+Alt+S')
+    actionShortcut.configure('Ctrl+X', () => controller.start())
+    shortcuts.trigger('Ctrl+X')
     expect(onStart).toHaveBeenCalledOnce()
   })
 
@@ -75,27 +77,72 @@ describe('manual break start', () => {
   })
 
   it('retains the previous shortcut if registration fails and releases only its own shortcut', () => {
-    controller.configure('Ctrl+Alt+S', true)
+    actionShortcut.configure('Ctrl+X', () => controller.start())
     shortcuts.register('taken', () => {})
-    expect(controller.configure('taken', true)).toBe(false)
-    expect(controller.configure('invalid', true)).toBe(false)
-    expect(controller.configure({}, true)).toBe(false)
-    expect(controller.shortcut).toBe('Ctrl+Alt+S')
-    expect(shortcuts.isRegistered('Ctrl+Alt+S')).toBe(true)
-    controller.configure('', true)
-    expect(shortcuts.isRegistered('Ctrl+Alt+S')).toBe(false)
+    expect(actionShortcut.configure('taken')).toBe(false)
+    expect(actionShortcut.configure('invalid')).toBe(false)
+    expect(actionShortcut.configure({})).toBe(false)
+    expect(actionShortcut.shortcut).toBe('Ctrl+X')
+    expect(shortcuts.isRegistered('Ctrl+X')).toBe(true)
+    actionShortcut.configure('')
+    expect(shortcuts.isRegistered('Ctrl+X')).toBe(false)
     expect(shortcuts.isRegistered('taken')).toBe(true)
   })
 
-  it('does not reserve a global shortcut while the mode is disabled', () => {
-    controller.configure('Ctrl+Alt+S', false)
-    expect(shortcuts.register).not.toHaveBeenCalled()
+  it('validates a shortcut without reserving it between breaks', () => {
+    expect(actionShortcut.configure('Ctrl+X')).toBe(true)
+    expect(shortcuts.isRegistered('Ctrl+X')).toBe(false)
   })
 
-  it('rejects collisions with existing actions including equivalent accelerator aliases', () => {
-    expect(controller.conflicts('Ctrl+X', { endBreakShortcut: 'CmdOrCtrl+X' }, 'win32')).toBe(true)
-    expect(controller.conflicts('X+Control', { endBreakShortcut: 'CmdOrCtrl+X' }, 'win32')).toBe(true)
-    expect(controller.conflicts('Ctrl+Alt+S', { startBreakShortcut: 'Ctrl+Alt+S', endBreakShortcut: 'Ctrl+X' })).toBe(false)
+  it.each(['mini', 'long', 'extended'])('auto-starts %s only after its visible waiting deadline', type => {
+    const onStart = vi.fn()
+    const session = controller.wait(type, windows, onStart, 20000)
+    vi.advanceTimersByTime(60000)
+    expect(onStart).not.toHaveBeenCalled()
+    controller.arm()
+    controller.arm()
+    expect(session.deadline).toBe(Date.now() + 20000)
+    vi.advanceTimersByTime(19999)
+    expect(onStart).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(onStart).toHaveBeenCalledOnce()
+    expect(session.started).toBe(Date.now())
+    controller.start()
+    expect(onStart).toHaveBeenCalledOnce()
+  })
+
+  it('cancels auto-start on an early Start, closure, or replacement', () => {
+    const onStart = vi.fn()
+    controller.wait('mini', windows, onStart, 20000)
+    controller.arm()
+    controller.start()
+    vi.advanceTimersByTime(20000)
+    expect(onStart).toHaveBeenCalledOnce()
+    controller.wait('mini', windows, onStart, 20000)
+    controller.arm()
+    controller.close(windows)
+    vi.advanceTimersByTime(20000)
+    expect(onStart).toHaveBeenCalledOnce()
+    controller.wait('mini', windows, onStart, 20000)
+    controller.arm()
+    controller.wait('long', windows, onStart, 0)
+    controller.arm()
+    vi.advanceTimersByTime(3600000)
+    expect(onStart).toHaveBeenCalledOnce()
+  })
+
+  it('uses the same key to start first and take the existing action next', () => {
+    const duringBreak = vi.fn()
+    const session = controller.wait('mini', windows, () => {})
+    actionShortcut.configure('Ctrl+X', () => {
+      if (session.started === null) controller.start()
+      else duringBreak()
+    })
+    shortcuts.trigger('Ctrl+X')
+    expect(session.started).not.toBeNull()
+    expect(duringBreak).not.toHaveBeenCalled()
+    shortcuts.trigger('Ctrl+X')
+    expect(duringBreak).toHaveBeenCalledOnce()
   })
 
   it.each([

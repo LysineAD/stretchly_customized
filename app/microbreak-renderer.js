@@ -8,8 +8,8 @@ import createBreakStartControl from './utils/breakStartControl.js'
 window.onload = async (event) => {
   const startControl = createBreakStartControl()
   const [idea, initialStarted, duration, strictMode, postpone,
-    postponePercent, backgroundColor, danger, breakHealthMode] = await window.breaks.sendBreakData()
-  startControl.initialize(initialStarted)
+    postponePercent, backgroundColor, danger, breakHealthMode, autoStartAt] = await window.breaks.sendBreakData()
+  startControl.initialize(initialStarted, autoStartAt)
 
   document.ondragover = event =>
     event.preventDefault()

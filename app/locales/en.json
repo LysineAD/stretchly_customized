@@ -25,7 +25,8 @@
     "cancel": "Cancel",
     "preferences": "Preferences",
     "contributorPreferences": "Contributor Preferences",
-    "syncPreferences": "Sync Preferences"
+    "syncPreferences": "Sync Preferences",
+    "skipCurrentBreak": "Skip current break"
   },
   "break": {
     "postpone": "Postpone this break",
@@ -33,7 +34,8 @@
     "title": "Time to take a break!",
     "finish": "Finish this break",
     "start": "Start break",
-    "readyToStart": "Ready when you are"
+    "readyToStart": "Ready when you are",
+    "autoStartIn": "Auto-starts in {{seconds}} s"
   },
   "preferences": {
     "title": "Stretchly Preferences",
@@ -58,9 +60,17 @@
       "language": "Select language:",
       "restoreDefaults": "Restore defaults",
       "manualBreakStart": "Start breaks manually",
-      "startBreakShortcut": "Start break shortcut",
-      "startShortcutHelp": "Press this global shortcut to use the Start break button. Example: Ctrl+Alt+S. Leave empty to disable the shortcut.",
-      "startShortcutError": "The Start break shortcut could not be registered. Choose another combination; the Start break button still works."
+      "reminderHeading": "Break windows",
+      "generalHeading": "General",
+      "breakShortcut": "Break shortcut",
+      "breakShortcutHelp": "One global shortcut: Start while waiting, then Postpone or Skip during the break. Use an accelerator such as Ctrl+X or Shift+X. Leave empty to disable.",
+      "breakShortcutError": "This shortcut could not be registered. Choose another combination; break buttons still work.",
+      "miniAutoStart": "Mini break: auto-start after",
+      "longAutoStart": "Long break: auto-start after",
+      "extendedAutoStart": "Extended break: auto-start after",
+      "autoStartHelp": "These waits apply when Start breaks manually is enabled. Start earlier with the button or break shortcut. Changes apply to the next reminder. Set a slider to 0 to wait until you press Start.",
+      "autoStartOff": "Wait for Start",
+      "autoStartSeconds": "{{seconds}} seconds"
     },
     "schedule": {
       "miniBreaks": "Mini breaks:",
@@ -87,7 +97,8 @@
       "enableStrictMini": "Enable Strict mode for Mini breaks",
       "enableStrictLong": "Enable Strict mode for Long breaks",
       "enableStrictExtended": "Enable Strict mode for Extended breaks",
-      "cantDisableBoth": "It is not possible to disable both types of breaks"
+      "cantDisableBoth": "It is not possible to disable both types of breaks",
+      "strictButtonsInfo": "Strict mode hides the on-window Skip button. Postpone follows its usual limits. The tray menu always remains available for intentional Skip, Pause, Preferences, or Quit."
     },
     "theme": {
       "appearance": "Appearance:",
