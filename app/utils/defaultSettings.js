@@ -44,6 +44,8 @@ export default {
   volume: 1,
   fullscreen: false,
   compactBreaks: false,
+  manualBreakStart: false,
+  startBreakShortcut: 'CmdOrCtrl+Alt+S',
   breakClickThrough: false,
   ideas: true,
   naturalBreaks: true,

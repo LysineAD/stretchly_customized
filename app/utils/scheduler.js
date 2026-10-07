@@ -7,6 +7,7 @@ class Scheduler {
   }
 
   get timeLeft () {
+    if (this.waitingForStart) return this.delay
     if (this.timer === null) return false
     return this.now + this.delay - Date.now()
   }
@@ -23,6 +24,7 @@ class Scheduler {
   }
 
   cancel () {
+    this.waitingForStart = false
     clearTimeout(this.timer)
     this.timer = null
     this.reference = null

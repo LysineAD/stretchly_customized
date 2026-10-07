@@ -68,6 +68,16 @@
       <label data-i18next="preferences.settings.clickThrough" for="breakClickThrough"></label>
     </div>
     <div>
+      <input type="checkbox" value="manualBreakStart" id="manualBreakStart">
+      <label data-i18next="preferences.settings.manualBreakStart" for="manualBreakStart"></label>
+    </div>
+    <div>
+      <label data-i18next="preferences.settings.startBreakShortcut" for="startBreakShortcut"></label>
+      <input type="text" id="startBreakShortcut" aria-describedby="startShortcutHelp startShortcutError">
+      <div id="startShortcutHelp" data-i18next="preferences.settings.startShortcutHelp"></div>
+      <div id="startShortcutError" role="alert" class="hidden" data-i18next="preferences.settings.startShortcutError"></div>
+    </div>
+    <div>
       <input type="checkbox" value="ideas" id="showIdeas">
       <label data-i18next="preferences.settings.showIdeas" for="showIdeas"></label>
     </div>

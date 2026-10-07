@@ -30,6 +30,7 @@ import { registerBreakShortcuts } from './utils/breakShortcuts.js'
 import defaultSettings from './utils/defaultSettings.js'
 import StatusMessages from './utils/statusMessages.js'
 import DisplayManager from './utils/displayManager.js'
+import BreakStartController from './utils/breakStartController.js'
 import { getCompactBreakBounds, setBreakDisplayMode } from './utils/breakDisplaySettings.js'
 import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough } from './utils/breakWindowPresentation.js'
 
@@ -96,6 +97,7 @@ let updateChecker
 let currentTrayIconPath = null
 let currentTrayMenuTemplate = null
 let trayUpdateIntervalObj = null
+const breakStartController = new BreakStartController(globalShortcut)
 let endBreakShortcutSupported
 
 if (insideWindowsPortable()) {
@@ -481,6 +483,10 @@ async function initialize (isAppStart = true) {
     functions: { pauseBreaks, resumeBreaks, skipToBreak, skipToMicrobreak, skipToExtendedBreak, resetBreaks }
   })
 
+  if (!configureStartBreakShortcut(settings.get('startBreakShortcut'), settings.get('manualBreakStart'))) {
+    log.warn('Stretchly: Start break shortcut registration failed')
+    dialog.showErrorBox('Stretchly Customized', i18next.t('preferences.settings.startShortcutError'))
+  }
   updateTray()
 }
 
@@ -787,6 +793,8 @@ function startMicrobreak () {
     return
   }
 
+  if (settings.get('manualBreakStart') && (breakWins || extendedBreakWins)) return
+  const manualStart = settings.get('manualBreakStart')
   const breakDuration = settings.get('microbreakDuration')
   const strictMode = settings.get('microbreakStrictMode')
   const postponesLimit = settings.get('microbreakPostponesLimit')
@@ -798,6 +806,13 @@ function startMicrobreak () {
 
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
+  const startSession = manualStart
+    ? breakStartController.wait('mini', microbreakWins, () => {
+      breakPlanner.emit('microbreakStarted', true)
+      updateTray()
+    })
+    : null
+  if (manualStart) breakPlanner.waitForBreakStart('mini')
 
   const idea = nextIdea || (settings.get('ideas') ? microbreakIdeas.randomElement : [''])
   nextIdea = null
@@ -810,12 +825,13 @@ function startMicrobreak () {
   }
 
   ipcMain.handle('send-mini-break-data', (event) => {
-    const startTime = Date.now()
+    const startTime = startSession ? startSession.started : Date.now()
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
       globalShortcut.register(shortcut, () => {
         log.info('Stretchly: end break shortcut pressed during Mini break')
-        const passedPercent = (Date.now() - startTime) / breakDuration * 100
+        const countdownStart = startSession ? startSession.started : startTime
+        const passedPercent = countdownStart === null ? 0 : (Date.now() - countdownStart) / breakDuration * 100
         if (passedPercent >= 100) {
           decreaseDanger(1)
           finishMicrobreak(false)
@@ -835,7 +851,7 @@ function startMicrobreak () {
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
-  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
+  const useContentScreen = settings.get('allScreens') && !manualStart && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
   const emitOnId = useContentScreen ? contentDisplayId : 0
 
   for (let localDisplayId = 0; localDisplayId < displayManager.getDisplayCount(); localDisplayId++) {
@@ -906,7 +922,7 @@ function startMicrobreak () {
           microbreakWinLocal.setKiosk(fullscreen)
         }
       }
-      if (localDisplayId === emitOnId) {
+      if (localDisplayId === emitOnId && !manualStart) {
         breakPlanner.emit('microbreakStarted', true)
         log.info('Stretchly: starting Mini break')
       }
@@ -962,6 +978,8 @@ function startBreak (type = 'long') {
     return
   }
 
+  if (settings.get('manualBreakStart') && (microbreakWins || breakWins || extendedBreakWins)) return
+  const manualStart = settings.get('manualBreakStart')
   const settingPrefix = isExtended ? 'extendedBreak' : 'break'
   const breakDuration = settings.get(`${settingPrefix}Duration`)
   const strictMode = settings.get(`${settingPrefix}StrictMode`)
@@ -980,6 +998,13 @@ function startBreak (type = 'long') {
   }
   const breakWindows = isExtended ? extendedBreakWins : breakWins
   const bridgeType = isExtended ? 'extended' : 'long'
+  const startSession = manualStart
+    ? breakStartController.wait(bridgeType, breakWindows, () => {
+      breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
+      updateTray()
+    })
+    : null
+  if (manualStart) breakPlanner.waitForBreakStart(bridgeType)
 
   const defaultNextIdea = settings.get('ideas') ? breakIdeas.randomElement : ['', '']
   const idea = nextIdea ? (nextIdea.map((val, index) => val || defaultNextIdea[index])) : defaultNextIdea
@@ -993,12 +1018,13 @@ function startBreak (type = 'long') {
   }
 
   ipcMain.handle(`send-${bridgeType}-break-data`, (event) => {
-    const startTime = Date.now()
+    const startTime = startSession ? startSession.started : Date.now()
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
       globalShortcut.register(shortcut, () => {
         log.info(`Stretchly: end break shortcut pressed during ${breakLabel} break`)
-        const passedPercent = (Date.now() - startTime) / breakDuration * 100
+        const countdownStart = startSession ? startSession.started : startTime
+        const passedPercent = countdownStart === null ? 0 : (Date.now() - countdownStart) / breakDuration * 100
         if (passedPercent >= 100) {
           decreaseDanger(2)
           if (isExtended) {
@@ -1030,7 +1056,7 @@ function startBreak (type = 'long') {
   })
 
   const contentDisplayId = displayManager.getContentDisplayId()
-  const useContentScreen = settings.get('allScreens') && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
+  const useContentScreen = settings.get('allScreens') && !manualStart && !showBreaksAsRegularWindows && !settings.get('compactBreaks') && contentDisplayId !== -1
   const emitOnId = useContentScreen ? contentDisplayId : 0
 
   for (let localDisplayId = 0; localDisplayId < displayManager.getDisplayCount(); localDisplayId++) {
@@ -1101,7 +1127,7 @@ function startBreak (type = 'long') {
           breakWinLocal.setKiosk(fullscreen)
         }
       }
-      if (localDisplayId === emitOnId) {
+      if (localDisplayId === emitOnId && !manualStart) {
         breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
         log.info(`Stretchly: starting ${breakLabel} break`)
       }
@@ -1154,6 +1180,7 @@ function startExtendedBreak () {
 }
 
 function breakComplete (shouldPlaySound, windows, breakType) {
+  breakStartController.close(windows)
   if (settings.get('endBreakShortcut') && globalShortcut.isRegistered(settings.get('endBreakShortcut'))) {
     globalShortcut.unregister(settings.get('endBreakShortcut'))
   }
@@ -1730,7 +1757,29 @@ ipcMain.on('finish-extended-break', function (event, shouldPlaySound, manualAwai
   finishExtendedBreak(shouldPlaySound)
 })
 
+function configureStartBreakShortcut (shortcut, enabled) {
+  if (breakStartController.conflicts(shortcut, settings.store)) return false
+  return breakStartController.configure(shortcut, enabled)
+}
+
+ipcMain.handle('start-visible-break', (event, type) => breakStartController.start(type, event.sender))
+
+ipcMain.handle('save-start-break-shortcut', (event, value) => {
+  if (!configureStartBreakShortcut(value, settings.get('manualBreakStart'))) return false
+  settings.set('startBreakShortcut', value.trim())
+  return true
+})
+
 ipcMain.on('save-setting', function (event, key, value) {
+  if (key === 'manualBreakStart') {
+    if (typeof value !== 'boolean') return
+    settings.set(key, value)
+    if (!configureStartBreakShortcut(settings.get('startBreakShortcut'), value)) {
+      dialog.showErrorBox('Stretchly Customized', i18next.t('preferences.settings.startShortcutError'))
+    }
+    return
+  }
+
   if (key === 'breakDisplayMode') {
     setBreakDisplayMode(settings, value)
     return

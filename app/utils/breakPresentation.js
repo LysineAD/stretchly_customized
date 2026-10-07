@@ -9,7 +9,7 @@ export default async function initializeBreakPresentation () {
   let pointer = null
   let lastHeight = null
   let lastWidth = null
-  const interactiveSelector = '#postpone, #close, #finish, .break-idea a, .break-text a, .microbreak-idea a'
+  const interactiveSelector = '#start, #postpone, #close, #finish, .break-idea a, .break-text a, .microbreak-idea a'
 
   const updateInput = () => {
     let interactive = false
@@ -43,11 +43,12 @@ export default async function initializeBreakPresentation () {
   if (compact) {
     document.body.classList.add('compact-break')
     await document.fonts.ready
-    await window.breaks.resizeWindow(Math.ceil(content.scrollHeight))
     lastHeight = Math.ceil(content.scrollHeight)
     lastWidth = content.clientWidth
+    await window.breaks.resizeWindow(lastHeight)
     const resizeObserver = new window.ResizeObserver(resize)
     resizeObserver.observe(content)
+    resize()
   }
 
   document.addEventListener('mousemove', event => {

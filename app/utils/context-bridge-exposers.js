@@ -31,6 +31,8 @@ function exposeBreaks (type) {
     sendBreakData: () => ipcRenderer.invoke(`send-${type}-break-data`),
     finishBreak: (manualAwaiting) => ipcRenderer.send(`finish-${type}-break`, false, manualAwaiting),
     postponeBreak: () => ipcRenderer.send(`postpone-${type}-break`),
+    startBreak: () => ipcRenderer.invoke('start-visible-break', type),
+    onCountdownStarted: (callback) => ipcRenderer.on('break-countdown-started', (_e, started) => callback(started)),
     signalLoaded: () => ipcRenderer.send(`${type}-break-loaded`),
     resizeWindow: (height) => ipcRenderer.invoke('resize-break-window', height),
     getPointerPosition: () => ipcRenderer.invoke('get-break-pointer-position'),
@@ -67,6 +69,7 @@ function exposeSemver () {
 function exposeSettings () {
   contextBridge.exposeInMainWorld('settings', {
     get: (key) => ipcRenderer.invoke('settings-get', key),
+    saveStartShortcut: (value) => ipcRenderer.invoke('save-start-break-shortcut', value),
     currentSettings: async () => {
       return await ipcRenderer.invoke('current-settings')
     },

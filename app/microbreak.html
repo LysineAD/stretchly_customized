@@ -15,10 +15,12 @@
     <div class="breaks">
       <div>
         <div class="microbreak-idea" dir="auto"></div>
+        <div id="start-hint" class="hidden" data-i18next="break.readyToStart" role="status"></div>
         <progress id='progress' max="10000" aria-hidden="true"></progress>
         <span id='progress-time' aria-hidden="true"></span>
       </div>
       <div>
+        <button id="start" class="hidden" data-i18next="break.start" type="button"></button>
         <a id="postpone" class="tooltip top hidden">
           <span data-i18next="break.postpone"></span>
           <img src="images/breaks/break-postpone.svg" />

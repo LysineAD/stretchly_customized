@@ -122,6 +122,14 @@ class BreaksPlanner extends EventEmitter {
     })
   }
 
+  waitForBreakStart (type) {
+    this.scheduler.cancel()
+    const prefix = type === 'mini' ? 'microbreak' : type === 'extended' ? 'extendedBreak' : 'break'
+    const reference = type === 'mini' ? 'finishMicrobreak' : type === 'extended' ? 'finishExtendedBreak' : 'finishBreak'
+    this.scheduler = new Scheduler(null, this.settings.get(prefix + 'Duration'), reference)
+    this.scheduler.waitingForStart = true
+  }
+
   nextBreak () {
     this.postponesNumber = 0
     if (this.scheduler) this.scheduler.cancel()

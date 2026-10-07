@@ -210,6 +210,18 @@ window.onload = async (e) => {
     }
   })
 
+  const startShortcutInput = document.querySelector('#startBreakShortcut')
+  startShortcutInput.value = settings.startBreakShortcut
+  if (!eventsAttached) {
+    startShortcutInput.onchange = async () => {
+      const saved = await window.settings.saveStartShortcut(startShortcutInput.value)
+      document.querySelector('#startShortcutError').classList.toggle('hidden', saved)
+      startShortcutInput.setAttribute('aria-invalid', String(!saved))
+      if (!saved) startShortcutInput.value = await window.settings.get('startBreakShortcut')
+      setWindowHeight()
+    }
+  }
+
   document.querySelector('#language').value = settings.language
   if (!eventsAttached) {
     document.querySelector('#language').onchange = (event) => {

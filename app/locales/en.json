@@ -31,7 +31,9 @@
     "postpone": "Postpone this break",
     "skip": "Skip this break",
     "title": "Time to take a break!",
-    "finish": "Finish this break"
+    "finish": "Finish this break",
+    "start": "Start break",
+    "readyToStart": "Ready when you are"
   },
   "preferences": {
     "title": "Stretchly Preferences",
@@ -54,7 +56,11 @@
       "monitorIdleTime": "Monitor system idle time (breaks are paused if system is idle).",
       "monitorDnd": "Show breaks even in Do Not Disturb mode",
       "language": "Select language:",
-      "restoreDefaults": "Restore defaults"
+      "restoreDefaults": "Restore defaults",
+      "manualBreakStart": "Start breaks manually",
+      "startBreakShortcut": "Start break shortcut",
+      "startShortcutHelp": "Press this global shortcut to use the Start break button. Example: Ctrl+Alt+S. Leave empty to disable the shortcut.",
+      "startShortcutError": "The Start break shortcut could not be registered. Choose another combination; the Start break button still works."
     },
     "schedule": {
       "miniBreaks": "Mini breaks:",

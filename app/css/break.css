@@ -143,6 +143,7 @@ body[dir=rtl] .breaks > :nth-child(2) > a img {
   min-height: 0;
   max-height: 100vh;
   overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
   padding: 24px;
 }
 
@@ -172,4 +173,30 @@ body[dir=rtl] .breaks > :nth-child(2) > a img {
 
 .compact-break .breaks > :last-child:empty {
   display: none;
+}
+
+#start-hint {
+  font-size: 18px;
+  line-height: 26px;
+  margin-top: 24px;
+}
+
+#start {
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  padding: 10px 16px;
+  margin: 0 20px 12px 0;
+  cursor: pointer;
+}
+
+#start:hover,
+#start:focus-visible {
+  color: #FFFF00;
+}
+
+.breaks > :nth-child(2) {
+  text-align: center;
 }

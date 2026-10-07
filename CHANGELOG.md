@@ -6,9 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
+- Optional manual start for Mini, Long, and Extended breaks, using a Start break button or the same action through a configurable global shortcut.
 - Compact break windows that fit their content while retaining the advice typography.
 - Optional click-through for Window, Full screen, and Compact, with visible break controls remaining clickable.
 - Local Windows builds are named Stretchly Customized.
+
+### Fixed
+- Compact reminders keep a stable text width while resizing to avoid intermittent scrollbar wrapping.
 
 ## [1.22.1] - 2026-08-13
 ### Fixed

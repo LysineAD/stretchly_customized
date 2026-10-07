@@ -170,7 +170,13 @@ Type `stretchly help` to get a list of all commands and options available as wel
 
 This fork includes Extended breaks and is based on Stretchly 1.22.1. In Preferences, choose Window, Full screen, or Compact. Compact centers a content-fitting reminder on each selected monitor and retains the existing advice font sizes and line spacing. Enable "Allow clicks through break windows" to pass mouse input to the application underneath; visible break controls and advice links remain clickable. Both additions are disabled by default so existing preferences keep their display behavior.
 
+Enable **Start breaks manually** in Preferences to display a reminder when a Mini, Long, or Extended break is due and wait without consuming any break time. Click **Start break**, or press the **Start break shortcut** (default **Ctrl+Alt+S** on Windows), to perform the same action. Every selected monitor mirrors the reminder and countdown. The shortcut can be changed or cleared in Preferences; a conflict reports an error and leaves the previous shortcut saved. Skip, Postpone, and the pre-break notification preferences retain their existing behavior. Manual start is disabled by default and changes apply to the next reminder.
+
+Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized). This repository retains the original Extended breaks fork history.
+
 To build the local Windows application, run `npm ci` followed by `npm run pack -- --win --x64`. Copy the complete `dist/win-unpacked` folder to `D:\Projects\Stretchly_Customized` and run `Stretchly Customized.exe`. This customization was AI-assisted.
+
+Validation uses `npm run lint` and `npm test -- --coverage.enabled=false`. On Windows, `electron scripts/check-break-display.mjs dist/win-unpacked/resources/app.asar` checks all display sizes; add `--manual-start` to check waiting reminders and the Start button. `node scripts/check-manual-start.mjs dist/win-unpacked` checks the packaged app on two monitors with isolated profiles and sends Ctrl+Alt+F24 to test the native global shortcut. `node scripts/check-packaged-start.mjs dist/win-unpacked` checks Preferences and shortcut validation in an isolated profile.
 
 ## Preferences
 

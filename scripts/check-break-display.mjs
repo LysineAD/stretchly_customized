@@ -8,7 +8,8 @@ import { execFile } from 'node:child_process'
 
 const root = resolve(process.argv[2] || '.')
 const appDirectory = join(root, 'app')
-const output = resolve('.scratch/display-check')
+const manualStartCheck = process.argv.includes('--manual-start')
+const output = resolve(manualStartCheck ? '.scratch/manual-display-check' : '.scratch/display-check')
 mkdirSync(output, { recursive: true })
 app.setPath('userData', join(output, 'profile'))
 const moduleAt = file => import(pathToFileURL(join(appDirectory, file)).href)
@@ -33,6 +34,13 @@ app.on('window-all-closed', event => event.preventDefault())
 app.whenReady().then(async () => {
   registerBreakWindowPresentationHandlers()
   ipcMain.on('set-break-click-through', (event, ignore) => { const history = inputStates.get(event.sender.id) || []; history.push(ignore); inputStates.set(event.sender.id, history) })
+  ipcMain.handle('start-visible-break', () => {
+    if (started === null) {
+      started = Date.now()
+      for (const window of BrowserWindow.getAllWindows()) window.webContents.send('break-countdown-started', started)
+    }
+    return started
+  })
   ipcMain.handle('settings-get', (_event, key) => values[key])
   ipcMain.handle('i18next-translate', (_event, key) => key.split('.').reduce((value, part) => value?.[part], translations) || key)
   ipcMain.handle('i18next-dir', () => 'ltr')
@@ -71,7 +79,7 @@ app.whenReady().then(async () => {
         idea = type === 'mini'
           ? [...miniIdeas].sort((a, b) => b.data.length - a.data.length)[0].data
           : [...longIdeas].sort((a, b) => b.data.join('').length - a.data.join('').length)[0].data
-        started = Date.now()
+        started = manualStartCheck ? null : Date.now()
         const windows = []
         for (const display of screen.getAllDisplays()) {
           const bounds = mode === 'compact'
@@ -94,6 +102,9 @@ app.whenReady().then(async () => {
             skipTaskbar: true,
             webPreferences: { preload: join(appDirectory, type === 'mini' ? 'microbreak-preload.mjs' : type === 'extended' ? 'extended-break-preload.mjs' : 'break-preload.mjs'), sandbox: false }
           })
+          const resizeRequests = []
+          const nativeSetBounds = window.setBounds.bind(window)
+          window.setBounds = bounds => { resizeRequests.push(bounds); return nativeSetBounds(bounds) }
           configureBreakWindowPresentation(window, { get: key => values[key] }, display)
           window.webContents.on('console-message', (_event, details) => {
             if (details.level === 'error') rendererErrors.push(details.message)
@@ -102,6 +113,24 @@ app.whenReady().then(async () => {
           await window.loadFile(join(appDirectory, type === 'mini' ? 'microbreak.html' : 'break.html'))
           await Promise.race([loaded, sleep(10000).then(() => { throw new Error('Renderer did not initialize: ' + mode + '/' + type) })])
           await sleep(300)
+          if (mode === 'compact') {
+            let stableSamples = 0
+            let previousSize = ''
+            for (let attempt = 0; attempt < 50; attempt++) {
+              const size = await window.webContents.executeJavaScript(`({
+                viewportHeight: window.innerHeight,
+                height: document.querySelector('.breaks').scrollHeight,
+                clientHeight: document.querySelector('.breaks').clientHeight
+              })`)
+              const signature = JSON.stringify(size)
+              const settled = Math.abs(size.viewportHeight - window.getContentBounds().height) <= 1 &&
+                size.height <= size.clientHeight + 1
+              stableSamples = settled && signature === previousSize ? stableSamples + 1 : 0
+              previousSize = signature
+              if (stableSamples >= 2) break
+              await sleep(100)
+            }
+          }
           const layout = await window.webContents.executeJavaScript(`(() => {
           const idea = document.querySelector('.microbreak-idea, .break-idea')
           const text = document.querySelector('.break-text')
@@ -129,9 +158,12 @@ app.whenReady().then(async () => {
           assert.ok(layout.visiblePostpone)
           assert.ok(layout.advice.length > 0)
           if (mode === 'compact') {
-            assert.ok(layout.scrollHeight <= layout.clientHeight + 1, 'Bundled advice should fit: ' + JSON.stringify(layout))
+            assert.ok(layout.scrollHeight <= layout.clientHeight + 1, 'Bundled advice should fit: ' + JSON.stringify({ layout, bounds: window.getBounds(), contentBounds: window.getContentBounds(), resizeRequests }))
             const expected = getCompactBreakBounds(display, layout.scrollHeight, window.getBounds().width)
-            for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(window.getBounds()[key] - expected[key]) <= 1, 'Placement should match within native DPI rounding: ' + key)
+            for (const key of ['x', 'y', 'width', 'height']) {
+              const native = key === 'width' || key === 'height' ? window.getContentBounds() : window.getBounds()
+              assert.ok(Math.abs(native[key] - expected[key]) <= 1, 'Content size and placement should match within native DPI rounding: ' + key + ' ' + JSON.stringify({ type, bounds: window.getBounds(), contentBounds: window.getContentBounds(), minimumSize: window.getMinimumSize(), resizeRequests, expected, layout }))
+            }
             const image = await window.webContents.capturePage()
             writeFileSync(join(output, 'compact-' + type + '-' + display.id + '.png'), image.toPNG())
           }
@@ -184,6 +216,17 @@ app.whenReady().then(async () => {
           })()`)
           await sleep(100)
           assert.equal(await ignoresNativeMouse(overlay), false, 'Visible controls should receive native input')
+          if (manualStartCheck) {
+            await overlay.webContents.executeJavaScript(`(() => {
+              const bounds = document.querySelector('#start').getBoundingClientRect()
+              document.dispatchEvent(new MouseEvent('mousemove', { clientX: bounds.x + bounds.width / 2, clientY: bounds.y + bounds.height / 2 }))
+            })()`)
+            await sleep(100)
+            assert.equal(await ignoresNativeMouse(overlay), false, 'Start button should receive native input')
+            await overlay.webContents.executeJavaScript('document.querySelector("#start").click()')
+            await sleep(100)
+            for (const window of windows) assert.equal(await window.webContents.executeJavaScript('document.querySelector("#start").classList.contains("hidden")'), true)
+          }
           const before = actions
           await overlay.webContents.executeJavaScript('document.querySelector("#postpone").click()')
           await sleep(50)
@@ -204,6 +247,7 @@ app.whenReady().then(async () => {
     app.exit(0)
   } catch (error) {
     writeFileSync(join(output, 'failure.txt'), error.stack)
+    writeFileSync(join(output, 'partial-results.json'), JSON.stringify(reports, null, 2))
     console.error(error)
     app.exit(1)
   }

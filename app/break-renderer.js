@@ -3,10 +3,13 @@ import applyBreakHealthEffect from './utils/breakHealthEffect.js'
 import createRunOnce from './utils/runOnce.js'
 import './platform.js'
 import initializeBreakPresentation from './utils/breakPresentation.js'
+import createBreakStartControl from './utils/breakStartControl.js'
 
 window.onload = async (event) => {
-  const [idea, started, duration, strictMode, postpone,
+  const startControl = createBreakStartControl()
+  const [idea, initialStarted, duration, strictMode, postpone,
     postponePercent, backgroundColor, danger, breakHealthMode] = await window.breaks.sendBreakData()
+  startControl.initialize(initialStarted)
 
   document.ondragover = event =>
     event.preventDefault()
@@ -80,7 +83,8 @@ window.onload = async (event) => {
       currentTimeElement.innerHTML = (new Date()).toLocaleTimeString()
     }
     const now = Date.now()
-    const passed = now - started
+    const started = startControl.started
+    const passed = started === null ? 0 : now - started
     const currentSecond = Math.floor(passed / 1000)
     const secondChanged = currentSecond !== lastShownSecond
     lastShownSecond = currentSecond
@@ -117,7 +121,7 @@ window.onload = async (event) => {
     postponeElement.classList.add('hidden')
     closeElement.classList.add('hidden')
     manualFinishElement.classList.remove('hidden')
-    progressTime.innerHTML = await window.utils.formatElapsedDuration(Date.now() - started, locale)
+    progressTime.innerHTML = await window.utils.formatElapsedDuration(Date.now() - startControl.started, locale)
   })
 
   initializeBreakPresentation().catch(error => console.error(error))
