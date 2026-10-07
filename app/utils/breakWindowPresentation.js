@@ -3,6 +3,31 @@ import { getCompactBreakBounds } from './breakDisplaySettings.js'
 
 const windows = new WeakMap()
 
+export function whenBreakWindowReady (window, show) {
+  let painted = false
+  let loaded = false
+  let finished = false
+  const showWhenReady = () => {
+    if (finished || !painted || !loaded || window.isDestroyed()) return
+    finished = true
+    show()
+  }
+  const onPainted = () => {
+    painted = true
+    showWhenReady()
+  }
+  window.once('ready-to-show', onPainted)
+  window.once('closed', () => {
+    finished = true
+    window.removeListener('ready-to-show', onPainted)
+  })
+  return event => {
+    if (finished || event.sender !== window.webContents) return
+    loaded = true
+    showWhenReady()
+  }
+}
+
 export function configureBreakWindowPresentation (window, settings, display) {
   windows.set(window, { settings })
   if (settings.get('compactBreaks')) {

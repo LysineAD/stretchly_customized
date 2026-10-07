@@ -1,6 +1,7 @@
+import { EventEmitter } from 'node:events'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { BrowserWindow, ipcMain, screen } from 'electron'
-import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough } from '../app/utils/breakWindowPresentation.js'
+import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough, whenBreakWindowReady } from '../app/utils/breakWindowPresentation.js'
 
 vi.mock('electron', () => ({
   BrowserWindow: { fromWebContents: vi.fn(sender => sender.window) },
@@ -82,5 +83,50 @@ describe('break window presentation IPC', () => {
     expect(window.webContents.send).toHaveBeenCalledWith('break-click-through-changed', false)
     expect(second.setIgnoreMouseEvents).toHaveBeenLastCalledWith(false, { forward: true })
     expect(third.setIgnoreMouseEvents).not.toHaveBeenCalled()
+  })
+})
+
+describe('break window display readiness', () => {
+  const setup = () => {
+    const window = new EventEmitter()
+    window.webContents = {}
+    window.isDestroyed = () => false
+    const show = vi.fn()
+    return { window, show, loaded: whenBreakWindowReady(window, show) }
+  }
+
+  it('keeps a renderer-loaded window hidden until its first frame is ready', () => {
+    const { window, show, loaded } = setup()
+    loaded({ sender: window.webContents })
+    expect(show).not.toHaveBeenCalled()
+    window.emit('ready-to-show')
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a painted window hidden until presentation setup finishes', () => {
+    const { window, show, loaded } = setup()
+    window.emit('ready-to-show')
+    expect(show).not.toHaveBeenCalled()
+    loaded({ sender: window.webContents })
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('ignores another monitor and duplicate readiness messages', () => {
+    const { window, show, loaded } = setup()
+    window.emit('ready-to-show')
+    loaded({ sender: {} })
+    expect(show).not.toHaveBeenCalled()
+    loaded({ sender: window.webContents })
+    loaded({ sender: window.webContents })
+    window.emit('ready-to-show')
+    expect(show).toHaveBeenCalledOnce()
+  })
+
+  it('does not show a window closed before readiness', () => {
+    const { window, show, loaded } = setup()
+    loaded({ sender: window.webContents })
+    window.emit('closed')
+    window.emit('ready-to-show')
+    expect(show).not.toHaveBeenCalled()
   })
 })

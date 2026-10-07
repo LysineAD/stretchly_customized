@@ -123,6 +123,6 @@ window.onload = async (event) => {
     progressTime.innerHTML = await window.utils.formatElapsedDuration(Date.now() - startControl.started, locale)
   })
 
-  initializeBreakPresentation().catch(error => console.error(error))
+  await initializeBreakPresentation()
   await window.breaks.signalLoaded()
 }

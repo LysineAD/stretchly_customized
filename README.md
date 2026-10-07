@@ -176,6 +176,8 @@ Strict mode hides on-window Skip. The tray always remains available for intentio
 
 Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), retaining the original Extended fork history. See the [customization inventory](CUSTOMIZATIONS.md) for all retained features and the [quick update/build guide](UPDATING.md) for merging upstream, verification and replacing the ready-to-run app in `D:\Projects\Stretchly_Customized`. This customization was AI-assisted.
 
+Break windows finish presentation setup and render their initial layout before appearing. Compact dimensions and typography are retained.
+
 ## Preferences
 
 Most of the preferences can be customized by clicking on the "Preferences" item in the tray menu. (On Windows, to open Preferences, you can also double-click on the tray icon.)

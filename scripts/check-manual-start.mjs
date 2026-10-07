@@ -8,7 +8,8 @@ import { promisify } from 'node:util'
 const folder = resolve(process.argv[2] || 'dist/win-unpacked')
 const strictQuitCheck = process.argv.includes('--strict-quit')
 const autoStartCheck = process.argv.includes('--auto-start')
-const output = resolve(strictQuitCheck ? '.scratch/strict-quit-check' : autoStartCheck ? '.scratch/auto-start-check' : '.scratch/manual-start-check')
+const readinessCheck = process.argv.includes('--readiness')
+const output = resolve(readinessCheck ? '.scratch/readiness-check' : strictQuitCheck ? '.scratch/strict-quit-check' : autoStartCheck ? '.scratch/auto-start-check' : '.scratch/manual-start-check')
 const executable = join(folder, 'Stretchly Customized.exe')
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const run = promisify(execFile)
@@ -40,7 +41,8 @@ const connect = async target => {
   })
   const send = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++next
-    pending.set(id, { resolve, reject })
+    const timeout = setTimeout(() => { pending.delete(id); reject(new Error(method + ' timed out')) }, 10000)
+    pending.set(id, { resolve: value => { clearTimeout(timeout); resolve(value) }, reject: error => { clearTimeout(timeout); reject(error) } })
     socket.send(JSON.stringify({ id, method, params }))
   })
   return {
@@ -94,15 +96,42 @@ for (const type of ['mini', 'long', 'extended']) {
   }
   writeFileSync(join(data, 'config.json'), JSON.stringify(config))
   const port = await reservePort()
-  const mainPort = strictQuitCheck ? await reservePort() : null
+  const mainPort = (strictQuitCheck || readinessCheck || autoStartCheck) ? await reservePort() : null
   const env = { ...process.env, PORTABLE_EXECUTABLE_DIR: profile }
   const child = spawn(executable, ['--remote-debugging-port=' + port, ...(mainPort ? ['--inspect=127.0.0.1:' + mainPort] : [])], { windowsHide: true, env, stdio: 'ignore' })
   const connections = []
+  let readinessInspector
+  let readinessRecords
   try {
     const targets = async () => (await fetch('http://127.0.0.1:' + port + '/json')).json()
     for (let attempt = 0; attempt < 60; attempt++) {
       await sleep(100)
       try { if ((await targets()).length) break } catch {}
+    }
+    if (readinessCheck || autoStartCheck) {
+      const mainTarget = (await (await fetch('http://127.0.0.1:' + mainPort + '/json')).json())[0]
+      readinessInspector = await connect(mainTarget)
+    }
+    if (readinessCheck) {
+      await readinessInspector.evaluate(`(() => {
+        const { app, ipcMain } = process.getBuiltinModule('module').createRequire(process.execPath)('electron')
+        globalThis.breakReadiness = []
+        const windows = new Map()
+        for (const type of ['mini', 'long', 'extended']) {
+          ipcMain.on(type + '-break-loaded', event => {
+            const entry = windows.get(event.sender.id)
+            if (entry) entry.loaded = true
+          })
+        }
+        app.on('browser-window-created', (_, window) => {
+          const entry = { painted: false, loaded: false, shows: [] }
+          windows.set(window.webContents.id, entry)
+          breakReadiness.push(entry)
+          window.once('ready-to-show', () => { entry.painted = true })
+          window.on('show', () => entry.shows.push({ painted: entry.painted, loaded: entry.loaded }))
+        })
+        return true
+      })()`)
     }
     if (type !== 'extended') {
       const forwarded = spawn(executable, [type], { windowsHide: true, env, stdio: 'ignore' })
@@ -115,6 +144,21 @@ for (const type of ['mini', 'long', 'extended']) {
       if (breaks.length >= 2) break
     }
     assert.ok(breaks.length >= 2, type + ': reminders should open on both monitors')
+    if (readinessInspector) {
+      let visible = false
+      for (let attempt = 0; attempt < 100; attempt++) {
+        visible = await readinessInspector.evaluate(`(() => {
+          const { BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron')
+          const windows = BrowserWindow.getAllWindows().filter(window =>
+            window.webContents.getURL().endsWith('/microbreak.html') || window.webContents.getURL().endsWith('/break.html'))
+          return windows.length >= 2 && windows.every(window => window.isVisible())
+        })()`)
+        if (visible) break
+        await sleep(100)
+      }
+      assert.equal(visible, true, type + ': prepared reminder windows should become visible')
+      if (autoStartCheck) await readinessInspector.evaluate("(() => { const { BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron'); for (const window of BrowserWindow.getAllWindows()) { window.setOpacity(0); window.setIgnoreMouseEvents(true) } return true })()")
+    }
     for (const target of breaks) connections.push(await connect(target))
     const stateExpression = `JSON.stringify({
       started: (await window.breaks.sendBreakData())[1],
@@ -136,7 +180,18 @@ for (const type of ['mini', 'long', 'extended']) {
         await sleep(100)
       }
     } else await sleep(3500)
+    const nativeBounds = async () => readinessInspector
+      ? readinessInspector.evaluate(`(() => {
+        const { BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron')
+        return BrowserWindow.getAllWindows()
+          .filter(window => /\\/(microbreak|break)\\.html$/.test(window.webContents.getURL()))
+          .map(window => ({ id: window.id, bounds: window.getBounds() }))
+          .sort((a, b) => a.id - b.id)
+      })()`)
+      : null
+    const waitingBounds = await nativeBounds()
     const waiting = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
+    if (waitingBounds) assert.equal(waitingBounds.length, waiting.length)
     for (const state of waiting) {
       assert.equal(state.started, null)
       assert.equal(state.startVisible, true)
@@ -151,7 +206,12 @@ for (const type of ['mini', 'long', 'extended']) {
       assert.equal(state.viewport.height, 720)
       assert.equal(state.advice, waiting[0].advice)
     }
-    if (reports.length) assert.deepEqual(waiting.map(state => state.viewport), reports[0].waiting.map(state => state.viewport), 'All break types must use the same fixed size')
+    if (reports.length) {
+      for (let index = 0; index < waiting.length; index++) {
+        assert.equal(waiting[index].viewport.height, reports[0].waiting[index].viewport.height)
+        assert.ok(Math.abs(waiting[index].viewport.width - reports[0].waiting[index].viewport.width) <= 1, 'All break types must retain fixed dimensions within native Windows DPI rounding')
+      }
+    }
     const image = await connections[0].send('Page.captureScreenshot', { format: 'png' })
     writeFileSync(join(profile, 'waiting.png'), Buffer.from(image.data, 'base64'))
     if (autoStartCheck) {
@@ -162,12 +222,16 @@ for (const type of ['mini', 'long', 'extended']) {
     } else if (type === 'mini') await connections[connections.length - 1].evaluate("document.querySelector('#start').click()")
     else await pressShortcut()
     await sleep(200)
+    const runningBounds = await nativeBounds()
+    if (waitingBounds) assert.deepEqual(runningBounds, waitingBounds, 'Native window bounds must stay fixed across Start')
     const running = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
     for (const state of running) {
       assert.ok(state.started > 0)
       assert.equal(state.started, running[0].started)
       assert.equal(state.startVisible, false)
-      assert.deepEqual(state.viewport, waiting[running.indexOf(state)].viewport)
+      const initialViewport = waiting[running.indexOf(state)].viewport
+      assert.equal(state.viewport.height, initialViewport.height)
+      assert.ok(Math.abs(state.viewport.width - initialViewport.width) <= 1, 'Renderer viewport must stay fixed within native Windows DPI rounding')
       assert.ok(state.progress < 10000 && state.progress > 0)
     }
     await connections[0].evaluate('window.breaks.startBreak()')
@@ -193,11 +257,21 @@ for (const type of ['mini', 'long', 'extended']) {
     } else await pressShortcut()
     await sleep(200)
     if (!strictQuitCheck) assert.equal((await targets()).filter(target => target.url.endsWith('/microbreak.html') || target.url.endsWith('/break.html')).length, 0)
+    if (readinessCheck) {
+      readinessRecords = await readinessInspector.evaluate('breakReadiness')
+      assert.ok(readinessRecords.length >= 2, type + ': each monitor must have a readiness record')
+      for (const entry of readinessRecords) {
+        assert.equal(entry.shows.length, 1, type + ': each window must appear once')
+        assert.deepEqual(entry.shows[0], { painted: true, loaded: true }, type + ': windows must stay hidden until paint and renderer preparation')
+      }
+      console.log(type + ': native paint and renderer readiness precede display on both monitors')
+    }
     const saved = JSON.parse(readFileSync(join(data, 'config.json'), 'utf8'))
     for (const key of Object.keys(config)) assert.deepEqual(saved[key], config[key], key)
-    reports.push({ type, monitors: waiting.length, waiting, running, trigger: autoStartCheck ? 'auto-start deadline' : type === 'mini' ? 'button' : 'native global shortcut', repeatedStartIgnored: true, sameShortcutPostponesAfterStart: !autoStartCheck && !strictQuitCheck, intentionalStrictQuit: strictQuitCheck, fullDurationAfterAutoStart: autoStartCheck })
+    reports.push({ type, readiness: readinessRecords, waitingBounds, runningBounds, monitors: waiting.length, waiting, running, trigger: autoStartCheck ? 'auto-start deadline' : type === 'mini' ? 'button' : 'native global shortcut', repeatedStartIgnored: true, sameShortcutPostponesAfterStart: !autoStartCheck && !strictQuitCheck, intentionalStrictQuit: strictQuitCheck, fullDurationAfterAutoStart: autoStartCheck })
     console.log(type + ': ' + (strictQuitCheck ? 'intentional strict-mode Quit' : autoStartCheck ? 'auto-start and full duration' : 'wait, mirrored start, repeated Start, and same-key Postpone') + ' passed')
   } finally {
+    readinessInspector?.socket.close()
     for (const connection of connections) connection.socket.close()
     child.kill()
     await new Promise(resolve => child.exitCode !== null ? resolve() : child.once('exit', resolve))

@@ -40,6 +40,7 @@ Use these project scripts from the source root. Place the package path before fl
 ```powershell
 node scripts/check-packaged-start.mjs dist/win-unpacked
 node scripts/check-manual-start.mjs dist/win-unpacked
+node scripts/check-manual-start.mjs dist/win-unpacked --readiness
 node scripts/check-manual-start.mjs dist/win-unpacked --auto-start
 node scripts/check-manual-start.mjs dist/win-unpacked --strict-quit
 .\node_modules\.bin\electron.cmd scripts/check-break-display.mjs dist/win-unpacked/resources/app.asar
@@ -47,7 +48,7 @@ node scripts/check-manual-start.mjs dist/win-unpacked --strict-quit
 .\node_modules\.bin\electron.cmd scripts/check-compact-content.mjs dist/win-unpacked/resources/app.asar
 ```
 
-These use isolated profiles under `.scratch`; they do not overwrite the user's settings. Manual-start checks expect two connected monitors and briefly show real break windows. The shortcut test sends **Ctrl+Alt+F24** to the isolated app. The strict-Quit check uses a local main-process inspector to invoke the same Electron Quit action during each strict break and requires a clean exit. The display checks inspect Windows native mouse transparency and control routing; `--native-input` additionally moves/clicks the real pointer and should only be used when needed. Screenshots and JSON reports are retained under `.scratch`.
+These use isolated profiles under `.scratch`; they do not overwrite the user's settings. Manual-start checks expect two connected monitors and briefly show real break windows. The shortcut test sends **Ctrl+Alt+F24** to the isolated app. The readiness check records native paint and renderer-loaded events and rejects any window shown before both, for all three break types. The strict-Quit check uses a local main-process inspector to invoke the same Electron Quit action during each strict break and requires a clean exit. The display checks inspect Windows native mouse transparency and control routing; `--native-input` additionally moves/clicks the real pointer and should only be used when needed. Screenshots and JSON reports are retained under `.scratch`.
 
 Completion checks:
 

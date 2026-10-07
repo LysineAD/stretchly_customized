@@ -33,7 +33,7 @@ import DisplayManager from './utils/displayManager.js'
 import BreakStartController from './utils/breakStartController.js'
 import BreakActionShortcut from './utils/breakActionShortcut.js'
 import { getCompactBreakBounds, setBreakDisplayMode } from './utils/breakDisplaySettings.js'
-import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough } from './utils/breakWindowPresentation.js'
+import { configureBreakWindowPresentation, registerBreakWindowPresentationHandlers, updateBreakClickThrough, whenBreakWindowReady } from './utils/breakWindowPresentation.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -896,8 +896,7 @@ function startMicrobreak () {
       log.info('Stretchly: ready-to-show fired')
     })
 
-    const onMiniBreakLoaded = (event) => {
-      if (event.sender !== microbreakWinLocal.webContents) return
+    const onMiniBreakLoaded = whenBreakWindowReady(microbreakWinLocal, () => {
       ipcMain.off('mini-break-loaded', onMiniBreakLoaded)
       log.info('Stretchly: Mini break window loaded')
       if (showBreaksAsRegularWindows && !settings.get('breakClickThrough')) {
@@ -927,7 +926,7 @@ function startMicrobreak () {
         }, 0)
       }
       updateTray()
-    }
+    })
     ipcMain.on('mini-break-loaded', onMiniBreakLoaded)
 
     microbreakWinLocal.loadURL(isBlank ? modalPath + '?blank=1' : modalPath)
@@ -1106,8 +1105,7 @@ function startBreak (type = 'long') {
       log.info('Stretchly: ready-to-show fired')
     })
 
-    const onLongBreakLoaded = (event) => {
-      if (event.sender !== breakWinLocal.webContents) return
+    const onLongBreakLoaded = whenBreakWindowReady(breakWinLocal, () => {
       ipcMain.off(`${bridgeType}-break-loaded`, onLongBreakLoaded)
       log.info(`Stretchly: ${breakLabel} break window loaded`)
       if (showBreaksAsRegularWindows && !settings.get('breakClickThrough')) {
@@ -1138,7 +1136,7 @@ function startBreak (type = 'long') {
         }, 0)
       }
       updateTray()
-    }
+    })
     ipcMain.on(`${bridgeType}-break-loaded`, onLongBreakLoaded)
 
     breakWinLocal.loadURL(isBlank ? modalPath + '?blank=1' : modalPath)

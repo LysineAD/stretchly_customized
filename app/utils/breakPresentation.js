@@ -48,4 +48,6 @@ export default async function initializeBreakPresentation () {
     updateInput()
   })
   updateInput()
+  await document.fonts.ready
+  await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
 }

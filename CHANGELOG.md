@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Preferences uses scrolling, bounded window dimensions and responsive cards in two columns.
 
 ### Fixed
+- Break windows wait for presentation setup, fonts and rendering before appearing, preventing an unfinished initial frame.
 - Compact windows keep one size across advice and countdown phases.
 - Strict mode no longer removes tray controls or prevents intentional Quit.
 
