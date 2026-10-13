@@ -15,6 +15,9 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler = null
     this.isPaused = false
     this.pollersSuspended = false
+    this.idlePausedScheduler = null
+    this.idleResetPending = false
+    this.idleScheduleSnapshot = null
     this.naturalBreaksManager = new NaturalBreaksManager(settings)
     this.dndManager = new DndManager(settings)
     this.appExclusionsManager = new AppExclusionsManager(settings)
@@ -37,16 +40,41 @@ class BreaksPlanner extends EventEmitter {
       this.scheduler.plan()
     })
 
-    this.naturalBreaksManager.on('clearBreakScheduler', () => {
-      if (!this.isPaused && !this._isFinishingBreak && this.scheduler.reference !== null) {
-        this.clear()
+    this.naturalBreaksManager.on('idleTimeObserved', (idleTime, lastIdleTime) => {
+      this.captureIdleSchedule(idleTime, lastIdleTime)
+    })
+
+    this.naturalBreaksManager.on('clearBreakScheduler', idleTime => {
+      if (!this.isPaused && !this._isFinishingBreak && this.scheduler?.reference &&
+          this.idlePausedScheduler !== this.scheduler) {
+        if (this.settings.get('naturalBreaksResetOnIdle')) {
+          this.clear()
+          this.idleResetPending = true
+        } else {
+          const notificationTime = this.scheduler.reference.endsWith('Notification')
+            ? this.settings.get(this._scheduledBreakType + 'NotificationInterval')
+            : 0
+          const remaining = this.idleScheduleSnapshot
+            ? this.idleScheduleSnapshot.timeToNextBreak - notificationTime
+            : Math.min(this.scheduler.delay, this.scheduler.timeLeft + idleTime)
+          this.scheduler.suspend(remaining)
+          this.idlePausedScheduler = this.scheduler
+        }
         log.info('Stretchly: pausing breaks because of idle time')
+        this.emit('updateToolTip')
       }
     })
 
     this.naturalBreaksManager.on('naturalBreakFinished', () => {
-      if (!this.isPaused && !this._isFinishingBreak && !this.dndManager.isOnDnd) {
-        this.reset()
+      if (!this.isPaused && !this._isFinishingBreak && !this.dndManager.isOnDnd &&
+          !this.appExclusionsManager.isSchedulerCleared) {
+        if (this.idlePausedScheduler === this.scheduler) {
+          this.idlePausedScheduler = null
+          this.idleScheduleSnapshot = null
+          this.scheduler.plan()
+        } else if (this.idleResetPending) {
+          this.reset()
+        }
         log.info('Stretchly: resuming breaks after idle time')
         this.emit('updateToolTip')
       }
@@ -120,6 +148,30 @@ class BreaksPlanner extends EventEmitter {
         }
       }
     })
+  }
+
+  captureIdleSchedule (idleTime, lastIdleTime) {
+    if (this.idlePausedScheduler) return
+    if (!idleTime || idleTime < lastIdleTime || this.isPaused ||
+        this.settings.get('naturalBreaksResetOnIdle') || this.timeToNextBreak === null) {
+      this.idleScheduleSnapshot = null
+    }
+    if (!idleTime || this.isPaused || this.settings.get('naturalBreaksResetOnIdle') ||
+        this.timeToNextBreak === null) return
+    const snapshot = this.idleScheduleSnapshot
+    const counts = [this.breakNumber, this.longBreakNumber, this.postponesNumber].join(':')
+    const notificationAdvanced = snapshot?.reference === this.scheduler.reference + 'Notification' &&
+      snapshot.counts === counts
+    if (!snapshot || snapshot.counts !== counts ||
+        (snapshot.scheduler !== this.scheduler && !notificationAdvanced)) {
+      const elapsed = Math.max(0, this.scheduler.delay - this.scheduler.timeLeft)
+      this.idleScheduleSnapshot = {
+        scheduler: this.scheduler,
+        reference: this.scheduler.reference,
+        counts,
+        timeToNextBreak: this.timeToNextBreak + Math.min(idleTime, elapsed)
+      }
+    }
   }
 
   waitForBreakStart (type) {
@@ -233,6 +285,9 @@ class BreaksPlanner extends EventEmitter {
   }
 
   clear () {
+    this.idlePausedScheduler = null
+    this.idleResetPending = false
+    this.idleScheduleSnapshot = null
     this.scheduler.cancel()
     this.breakNumber = 0
     this.longBreakNumber = 0

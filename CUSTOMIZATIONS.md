@@ -1,6 +1,6 @@
 # Stretchly Customized: customization inventory
 
-Updated: 2026-10-07. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
+Updated: 2026-10-13. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
 
 ## Current app and settings
 
@@ -28,6 +28,7 @@ Updated: 2026-10-07. This file records the active feature contract for future ed
 | Strict mode and tray | On-window Skip remains hidden in strict mode; existing on-window Postpone rules remain. The tray menu is always accessible, including intentional **Skip current break**, Pause, Preferences and Quit. Quit is no longer prevented by strict mode. |
 | Preferences | Bounded, resizable window with scrolling and sticky navigation. Settings has two cards; Schedule has Mini, Long, Extended and Strict cards. Two columns normally, one on narrow windows. Every existing schedule, notification and Postpone control retained. |
 | Notifications | Existing before-break notification switches, lead times and normal behavior remain independent of manual start and auto-start waits. |
+| Idle controls | Existing idle-monitoring toggle retained. Main Settings adds a **1–60 minute** threshold slider (default **5**) backed by the existing `naturalBreaksInactivityResetTime` value, plus `naturalBreaksResetOnIdle` (default **true**). Checked: existing schedule reset. Unchecked: suspend/resume future countdowns from idle onset, preserve Mini/Long/Extended and Postpone counts, and retain progress through the Extended cycle. Shorter idle periods continue normal timing. Existing displayed break durations/controls and manual tray Pause retain their behavior. Disabling idle monitoring releases an idle-paused timer. |
 | Other upstream options | Manual finish, clock, health mode, images, audio, idle/DND handling and advanced preferences are retained. These are upstream features; Extended adapts the relevant options to its third break type. |
 | Branding/delivery | Windows executable/product name is Stretchly Customized. Builds are delivered locally; generated binaries, profiles and check artifacts are excluded from Git. |
 
@@ -40,7 +41,8 @@ A 20-second Mini break with a 20-second auto-start wait lasts at most 40 seconds
 | Original Extended fork, 2026-07-06 | Commit `872a94b`: third break type and integration, based on `523649f`. Originally named stretchly_extended_breaks. |
 | Upstream refresh / display customization, 2026-10-06 | Commit `971879f`: integrated upstream v1.22.1, Compact and all-size click-through, renamed Windows product. The GitHub fork was later renamed to stretchly_customized with history retained. |
 | First manual-start version, 2026-10-07 | Commit `6ee3480`: Start button, mirrored waiting/countdown and a separate global Start shortcut. |
-| Display readiness fix, 2026-10-07 | Wait for renderer presentation and native first-frame readiness before showing Mini, Long or Extended windows. Addresses an initialization race; the separately reported intermittent black-window flash is not yet attributed conclusively. |
+| Display readiness fix, 2026-10-07 | Wait for renderer presentation and native first-frame readiness before showing Mini, Long or Extended windows. Addresses an initialization race. |
+| Configurable idle handling, 2026-10-13 | Adds the threshold slider and reset/preserve option using the existing monitoring toggle. Preserved countdowns include the qualifying idle period and survive notification transitions. Extended-cycle progress remains intact in pause mode. |
 | Usability revision, 2026-10-07 | Replaces variable Compact sizing with fixed bounds; replaces separate Start shortcut with the existing break shortcut; adds three auto-start sliders, accessible strict tray actions, scrolling/cards and this inventory/update guide. |
 
 Old `startBreakShortcut` settings are ignored; no separate Start shortcut is registered. Old `showTrayMenuInStrictMode` is ignored because the tray is always available. Old saved keys may remain in profiles without affecting behavior. Do not reintroduce either old behavior when merging upstream.
@@ -50,6 +52,7 @@ Old `startBreakShortcut` settings are ignored; no separate Start shortcut is reg
 | Area | Files |
 | --- | --- |
 | Scheduling / third break type | `app/breaksPlanner.js`, `app/utils/scheduler.js`, `app/main.js`, `app/utils/statusMessages.js` |
+| Idle handling / preserved countdowns | `app/utils/naturalBreaksManager.js`, `scheduler.js`, `app/breaksPlanner.js`, `statusMessages.js`; regressions in `test/idleBreaks.js` and `scripts/check-idle-breaks.mjs` |
 | Display / mouse routing | `app/utils/breakDisplaySettings.js`, `breakWindowPresentation.js`, `breakPresentation.js`, `app/css/break.css` |
 | Waiting / auto-start / shared key | `app/utils/breakStartController.js`, `breakStartControl.js`, `breakActionShortcut.js`, both break renderers, `app/main.js` |
 | Preferences / defaults / labels | `app/preferences.html`, `preferences-renderer.js`, `css/preferences.css`, `utils/defaultSettings.js`, `locales/en.json` |

@@ -1793,6 +1793,10 @@ ipcMain.on('save-setting', function (event, key, value) {
     return
   }
 
+  if (key === 'naturalBreaksInactivityResetTime' &&
+      (typeof value !== 'number' || !Number.isFinite(value) || value <= 20000)) return
+  if (key === 'naturalBreaksResetOnIdle' && typeof value !== 'boolean') return
+
   if (key === 'naturalBreaks') {
     breakPlanner.naturalBreaks(value)
   }

@@ -102,6 +102,18 @@
           <input type="checkbox" value="naturalBreaks" id="monitorIdleTime">
           <label data-i18next="preferences.settings.monitorIdleTime" for="monitorIdleTime"></label>
         </div>
+        <fieldset id="idleControls">
+          <div>
+            <label data-i18next="preferences.settings.idleThreshold" for="idleThreshold"></label>
+            <input type="range" min="1" max="60" step="1" name="naturalBreaksInactivityResetTime" data-divisor="60000" id="idleThreshold">
+            <output data-unit="minutes"></output>
+          </div>
+          <div>
+            <input type="checkbox" value="naturalBreaksResetOnIdle" id="resetOnIdle">
+            <label data-i18next="preferences.settings.resetOnIdle" for="resetOnIdle"></label>
+          </div>
+          <p data-i18next="preferences.settings.idleHelp"></p>
+        </fieldset>
         <div>
           <input type="checkbox" class="negative" value="monitorDnd" id="monitorDnd">
           <label data-i18next="preferences.settings.monitorDnd" for="monitorDnd"></label>

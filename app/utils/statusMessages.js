@@ -3,6 +3,7 @@ import { formatTimeIn } from './utils.js'
 class StatusMessages {
   constructor ({ breakPlanner, settings, i18next, humanizeDuration }) {
     this.reference = breakPlanner.scheduler.reference
+    this.idleTime = breakPlanner.naturalBreaksManager?.isSchedulerCleared
     this.doNotDisturb = breakPlanner.dndManager.isOnDnd
     this.appExclusionPause = breakPlanner.appExclusionsManager.isSchedulerCleared
     this.timeLeft = breakPlanner.scheduler.timeLeft
@@ -42,6 +43,10 @@ class StatusMessages {
     if (this.appExclusionPause) {
       message += this.i18next.t('statusMessages.paused') + ' - ' + this.i18next.t('statusMessages.appExclusion')
       return message
+    }
+
+    if (this.idleTime) {
+      return this.i18next.t('statusMessages.paused') + ' - ' + this.i18next.t('statusMessages.idleTime')
     }
 
     const breakInterval = this.settings.get('breakInterval') + 1

@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
+- Idle threshold slider (1–60 minutes) beside the existing idle-monitoring toggle.
+- Optional idle pause/resume that preserves countdowns from idle onset and Mini/Long/Extended cycle progress; reset remains the default.
 - Optional manual start for Mini, Long, and Extended breaks using a Start button and the existing global break shortcut.
 - Separate auto-start wait sliders for each break type, with defaults of 20, 60 and 120 seconds; 0 waits indefinitely.
 - Fixed 860 × 720 logical-pixel Compact windows that retain advice typography.
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Preferences uses scrolling, bounded window dimensions and responsive cards in two columns.
 
 ### Fixed
+- Disabling idle monitoring while idle resumes the schedule instead of leaving it stopped.
 - Break windows wait for presentation setup, fonts and rendering before appearing, preventing an unfinished initial frame.
 - Compact windows keep one size across advice and countdown phases.
 - Strict mode no longer removes tray controls or prevents intentional Quit.

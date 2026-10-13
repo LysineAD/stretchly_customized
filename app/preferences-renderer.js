@@ -178,11 +178,17 @@ window.onload = async (e) => {
     const isNegative = checkbox.classList.contains('negative')
     checkbox.checked = isNegative ? !settings[checkbox.value] : settings[checkbox.value]
     if (!eventsAttached) {
-      checkbox.onchange = (event) =>
+      checkbox.onchange = (event) => {
         window.settings.saveSettings(checkbox.value,
           isNegative ? !checkbox.checked : checkbox.checked)
+        if (checkbox.value === 'naturalBreaks') {
+          document.querySelector('#idleControls').disabled = !checkbox.checked
+        }
+      }
     }
   })
+
+  document.querySelector('#idleControls').disabled = !settings.naturalBreaks
 
   document.querySelectorAll('input[type="radio"]').forEach(radio => {
     let value

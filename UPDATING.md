@@ -39,6 +39,7 @@ Use these project scripts from the source root. Place the package path before fl
 
 ```powershell
 node scripts/check-packaged-start.mjs dist/win-unpacked
+node scripts/check-idle-breaks.mjs dist/win-unpacked
 node scripts/check-manual-start.mjs dist/win-unpacked
 node scripts/check-manual-start.mjs dist/win-unpacked --readiness
 node scripts/check-manual-start.mjs dist/win-unpacked --auto-start
@@ -57,6 +58,7 @@ Completion checks:
 - Waiting leaves progress full; after Start the full duration runs; the same shortcut then follows original Postpone/Skip rules.
 - Existing Window/Full screen, click-through controls and notification behavior pass.
 - Strict mode hides on-window Skip but tray Skip/Pause/Preferences/Quit stay available.
+- The existing idle toggle enables/disables the new threshold and reset controls. Reset mode retains old behavior; preserve mode resumes the idle-onset countdown without losing Mini/Long/Extended cycle or Postpone counts. Check notification-stage transitions, disabling monitoring while idle, and intentional tray Pause.
 - All Preferences controls save, and the last Schedule control is reachable by scrolling.
 
 ## 3. Commit, publish source and replace the local app

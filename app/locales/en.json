@@ -70,7 +70,10 @@
       "extendedAutoStart": "Extended break: auto-start after",
       "autoStartHelp": "These waits apply when Start breaks manually is enabled. Start earlier with the button or break shortcut. Changes apply to the next reminder. Set a slider to 0 to wait until you press Start.",
       "autoStartOff": "Wait for Start",
-      "autoStartSeconds": "{{seconds}} seconds"
+      "autoStartSeconds": "{{seconds}} seconds",
+      "idleThreshold": "Handle idle time after",
+      "resetOnIdle": "Reset the break schedule after idle time",
+      "idleHelp": "When checked, returning from idle starts a fresh schedule. Uncheck to preserve countdowns and progress toward Extended breaks. The qualifying idle period does not consume countdown time."
     },
     "schedule": {
       "miniBreaks": "Mini breaks:",
@@ -245,7 +248,8 @@
     "afterMiniBreak_other": "after {{count}} Mini breaks",
     "afterLongBreak_one": "after {{count}} Long break",
     "afterLongBreak_other": "after {{count}} Long breaks",
-    "resuming": "Resuming"
+    "resuming": "Resuming",
+    "idleTime": "system idle"
   },
   "miniBreakIdeas": {
     "aaa": {

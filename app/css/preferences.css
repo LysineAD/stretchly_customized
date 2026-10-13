@@ -516,3 +516,16 @@ body {
     padding-inline: 16px;
   }
 }
+
+#idleControls {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+#idleControls:disabled {
+  opacity: 0.5;
+}

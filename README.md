@@ -150,7 +150,7 @@ Clicking the *Stretchly* icon in your tray area will display the current status 
 
 <img src="tray.png" height="140">
 
-*Stretchly* is monitoring your idle time, so when you are idle for 5 minutes, breaks will be paused until you return.
+*Stretchly* monitors idle time when enabled. In Settings, choose an idle threshold (1–60 minutes; default 5) and whether returning from idle resets the schedule or resumes its preserved countdowns and cycle progress.
 
 *Stretchly* is also monitoring Do Not Disturb mode, so breaks are paused when DnD mode is On.
 
@@ -171,6 +171,8 @@ Type `stretchly help` to get a list of all commands and options available as wel
 This fork includes Extended breaks and is based on Stretchly 1.22.1. Preferences offers Window, Full screen, or **Compact**. Compact uses a fixed **860 × 720 logical-pixel** window centered on each selected monitor, with the original advice typography. Smaller work areas clamp that size. **Allow clicks through break windows** applies to all three display choices; visible controls and links remain clickable.
 
 Enable **Start breaks manually** to show a waiting reminder. **Start break** and the existing **break shortcut** (default **Ctrl+X** on Windows) start the same countdown on all selected monitors. After Start, that same shortcut follows the existing Postpone/Skip rules. Edit or clear it in Preferences; invalid or unavailable combinations leave the previous saved value intact. Three sliders set the maximum wait before auto-start: Mini **20 seconds**, Long **60 seconds**, Extended **120 seconds** by default; **0 waits indefinitely**. The full configured break duration follows Start. Before-break notifications remain independent. Manual start defaults off; mode/wait changes apply to the next reminder.
+
+Use the existing **Monitor system idle time** checkbox to enable idle handling. The new **Handle idle time after** slider sets the threshold, from **1 to 60 minutes** (default **5**). **Reset the break schedule after idle time** is checked by default to retain existing behavior. Uncheck it to preserve countdowns from the beginning of the qualifying idle period and progress toward Extended breaks. For example, one completed Long break still counts after you return; only the remaining Long breaks are needed before Extended. Ongoing displayed breaks keep their existing duration and controls. Turning off idle monitoring resumes an idle-paused schedule.
 
 Strict mode hides on-window Skip. The tray always remains available for intentional **Skip current break**, Pause, Preferences and Quit. Preferences uses scrolling and two columns, switching to one column on narrow windows.
 
@@ -307,6 +309,8 @@ To play different sound for Mini breaks, set `miniBreakAudio` to desired value (
 To have different theme for Mini breaks, set `miniBreakColor` to desired value, ie `#123456`.
 
 #### Natural breaks inactivity time [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
+The main Settings page now exposes this value with a 1–60 minute slider. Set `naturalBreaksResetOnIdle` to `false` (or uncheck **Reset the break schedule after idle time**) to preserve countdowns and cycle progress instead of resetting. The default is `true`.
+
 In the preferences file, set `naturalBreaksInactivityResetTime` to your preferred value (in milliseconds greater than than 20000ms). This is an idle time length, after which *Stretchly* breaks will be paused until the user resumes activity.
 
 You can also set `naturalBreaksCheckInterval` in milliseconds: how often idle time is checked. A higher number means lower CPU and energy usage, but slightly less responsive detection. Default value is `2000` which is 2 seconds.

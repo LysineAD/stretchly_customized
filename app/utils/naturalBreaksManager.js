@@ -27,12 +27,14 @@ class NaturalBreaksManager extends EventEmitter {
 
   stop () {
     if (!this.timer) return
+    const wasCleared = this.isSchedulerCleared
     this.usingNaturalBreaks = false
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
     clearInterval(this.timer)
     this.timer = null
     desktopIdle.stopMonitoring()
+    if (wasCleared) this.emit('naturalBreakFinished')
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
@@ -48,19 +50,20 @@ class NaturalBreaksManager extends EventEmitter {
     let lastIdleTime = 0
     this.timer = setInterval(() => {
       const idleTime = this.idleTime
+      this.emit('idleTimeObserved', idleTime, lastIdleTime)
       if (!this.isOnNaturalBreak && idleTime > 20000) {
         this.isOnNaturalBreak = true
       }
       if (this.isOnNaturalBreak && idleTime < 20000) {
         this.isOnNaturalBreak = false
-        if (lastIdleTime > this.settings.get('naturalBreaksInactivityResetTime')) {
+        if (this.isSchedulerCleared) {
           this.isSchedulerCleared = false
           this.emit('naturalBreakFinished')
         }
       }
-      if (this.isOnNaturalBreak && idleTime > this.settings.get('naturalBreaksInactivityResetTime')) {
+      if (this.isOnNaturalBreak && idleTime >= this.settings.get('naturalBreaksInactivityResetTime')) {
         this.isSchedulerCleared = true
-        this.emit('clearBreakScheduler')
+        this.emit('clearBreakScheduler', idleTime)
       }
       lastIdleTime = idleTime
     }, this.naturalBreaksCheckInterval)

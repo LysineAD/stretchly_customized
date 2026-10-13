@@ -4,17 +4,29 @@ class Scheduler {
     this.delay = delay
     this.func = func
     this.reference = reference
+    this.suspendedTimeLeft = null
   }
 
   get timeLeft () {
+    if (this.suspendedTimeLeft !== null) return this.suspendedTimeLeft
     if (this.waitingForStart) return this.delay
     if (this.timer === null) return false
     return this.now + this.delay - Date.now()
   }
 
   plan () {
-    this.now = Date.now()
-    this.timer = setTimeout(this.func, this.delay)
+    const remaining = this.suspendedTimeLeft ?? this.delay
+    this.suspendedTimeLeft = null
+    this.now = Date.now() - (this.delay - remaining)
+    this.timer = setTimeout(this.func, remaining)
+  }
+
+  suspend (remaining = this.timeLeft) {
+    if (this.timer === null || this.suspendedTimeLeft !== null) return
+    this.suspendedTimeLeft = Math.max(0, remaining)
+    this.delay = Math.max(this.delay, this.suspendedTimeLeft)
+    clearTimeout(this.timer)
+    this.timer = null
   }
 
   correct () {
@@ -24,6 +36,7 @@ class Scheduler {
   }
 
   cancel () {
+    this.suspendedTimeLeft = null
     this.waitingForStart = false
     clearTimeout(this.timer)
     this.timer = null

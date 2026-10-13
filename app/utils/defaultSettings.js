@@ -51,6 +51,7 @@ export default {
   breakClickThrough: false,
   ideas: true,
   naturalBreaks: true,
+  naturalBreaksResetOnIdle: true,
   naturalBreaksInactivityResetTime: 300000,
   naturalBreaksCheckInterval: 2000,
   allScreens: true,
