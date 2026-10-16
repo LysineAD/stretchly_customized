@@ -34,6 +34,39 @@ describe('customized usability regressions', () => {
     expect(document.querySelectorAll('.schedule > .preference-card')).toHaveLength(4)
   })
 
+  it.each([
+    ['postponeMicrobreak', 'microbreakWins', 'finishMicrobreak'],
+    ['postponeBreak', 'breakWins', 'finishBreak'],
+    ['postponeExtendedBreak', 'extendedBreakWins', 'finishExtendedBreak']
+  ])('ignores duplicate or stale %s actions across mirrored windows', (action, windowsKey, reference) => {
+    const start = main.indexOf('function ' + action + ' ()')
+    const source = main.slice(start, main.indexOf('\nfunction ', start + 1))
+    const postponeCurrentBreak = vi.fn()
+    const context = {
+      [windowsKey]: [{}],
+      breakPlanner: { scheduler: { reference }, postponeCurrentBreak },
+      increaseDanger: vi.fn(),
+      breakComplete: () => null,
+      log: { info: vi.fn() },
+      updateTray: vi.fn()
+    }
+    runInNewContext(source + '\n' + action + '(); ' + action + '()', context)
+    expect(postponeCurrentBreak).toHaveBeenCalledOnce()
+    context[windowsKey] = [{}]
+    context.breakPlanner.scheduler.reference = 'startMicrobreak'
+    runInNewContext(source + '\n' + action + '()', context)
+    expect(postponeCurrentBreak).toHaveBeenCalledOnce()
+  })
+
+  it('does not offer obsolete postponement caps and keeps shared slider ranges aligned', () => {
+    const document = new JSDOM(readFileSync(new URL('../app/contributor-preferences.html', import.meta.url), 'utf8')).window.document
+    expect(document.querySelectorAll('input[name$="PostponesLimit"]')).toHaveLength(0)
+    for (const id of ['miniBreakPostponeTime', 'longBreakPostponeTime']) {
+      expect(document.querySelector('#' + id).max).toBe('30')
+    }
+    expect(document.querySelector('#pauseAfter').max).toBe('60')
+  })
+
   it('keeps Compact bounds identical regardless of content or phase', () => {
     const display = { bounds: { x: 0, y: 0, width: 2048, height: 1152 }, workArea: { x: 0, y: 0, width: 2048, height: 1112 } }
     expect(getCompactBreakBounds(display, 250)).toEqual(getCompactBreakBounds(display, 900))

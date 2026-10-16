@@ -1,4 +1,5 @@
 import Scheduler from './utils/scheduler.js'
+import { getIdleMode } from './utils/idleMode.js'
 import EventEmitter from 'events'
 import NaturalBreaksManager from './utils/naturalBreaksManager.js'
 import DndManager from './utils/dndManager.js'
@@ -47,9 +48,18 @@ class BreaksPlanner extends EventEmitter {
     this.naturalBreaksManager.on('clearBreakScheduler', idleTime => {
       if (!this.isPaused && !this._isFinishingBreak && this.scheduler?.reference &&
           this.idlePausedScheduler !== this.scheduler) {
-        if (this.settings.get('naturalBreaksResetOnIdle')) {
+        if (this.idleMode === 'reset') {
           this.clear()
           this.idleResetPending = true
+        } else if (this.idleMode === 'partial') {
+          const type = this._scheduledBreakType
+          const interval = this.settings.get('microbreakInterval') *
+            (this.settings.get('microbreak') ? 1 : this.settings.get('breakInterval') + 1)
+          this.scheduler.cancel()
+          this._scheduleBreak(type, interval)
+          this.scheduler.plan()
+          this.scheduler.suspend()
+          this.idlePausedScheduler = this.scheduler
         } else {
           const notificationTime = this.scheduler.reference.endsWith('Notification')
             ? this.settings.get(this._scheduledBreakType + 'NotificationInterval')
@@ -150,13 +160,20 @@ class BreaksPlanner extends EventEmitter {
     })
   }
 
+  get idleMode () {
+    return getIdleMode({
+      naturalBreaksIdleMode: this.settings.get('naturalBreaksIdleMode'),
+      naturalBreaksResetOnIdle: this.settings.get('naturalBreaksResetOnIdle')
+    })
+  }
+
   captureIdleSchedule (idleTime, lastIdleTime) {
     if (this.idlePausedScheduler) return
     if (!idleTime || idleTime < lastIdleTime || this.isPaused ||
-        this.settings.get('naturalBreaksResetOnIdle') || this.timeToNextBreak === null) {
+        this.idleMode !== 'preserve' || this.timeToNextBreak === null) {
       this.idleScheduleSnapshot = null
     }
-    if (!idleTime || this.isPaused || this.settings.get('naturalBreaksResetOnIdle') ||
+    if (!idleTime || this.isPaused || this.idleMode !== 'preserve' ||
         this.timeToNextBreak === null) return
     const snapshot = this.idleScheduleSnapshot
     const counts = [this.breakNumber, this.longBreakNumber, this.postponesNumber].join(':')
@@ -217,8 +234,8 @@ class BreaksPlanner extends EventEmitter {
   }
 
   nextBreakAfterNotification () {
-    this.scheduler.cancel()
     const scheduledBreakType = this._scheduledBreakType
+    this.scheduler.cancel()
     const breakNotificationInterval = this.settings.get(`${scheduledBreakType}NotificationInterval`)
     const eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}`
     this.scheduler = new Scheduler(() => this.emit(eventName), breakNotificationInterval, eventName)
@@ -226,19 +243,10 @@ class BreaksPlanner extends EventEmitter {
   }
 
   postponeCurrentBreak () {
+    const scheduledBreakType = this._scheduledBreakType
     this.scheduler.cancel()
     this.postponesNumber += 1
-    let postponeTime, eventName
-    const scheduledBreakType = this._scheduledBreakType
-    const notification = this.settings.get(`${scheduledBreakType}Notification`)
-    if (notification && this.settings.get(`${scheduledBreakType}PostponeTime`) > this.settings.get(`${scheduledBreakType}NotificationInterval`)) {
-      postponeTime = this.settings.get(`${scheduledBreakType}PostponeTime`) - this.settings.get(`${scheduledBreakType}NotificationInterval`)
-      eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}Notification`
-    } else {
-      postponeTime = this.settings.get(`${scheduledBreakType}PostponeTime`)
-      eventName = `start${scheduledBreakType.charAt(0).toUpperCase() + scheduledBreakType.slice(1)}`
-    }
-    this.scheduler = new Scheduler(() => this.emit(eventName), postponeTime, eventName)
+    this._scheduleBreak(scheduledBreakType, this.settings.get(`${scheduledBreakType}PostponeTime`))
     this.scheduler.plan()
     this.emit('updateToolTip')
   }
@@ -331,13 +339,13 @@ class BreaksPlanner extends EventEmitter {
 
   get _scheduledBreakType () {
     const reference = this.scheduler?.reference
-    if (reference === 'startExtendedBreak' || reference === 'startExtendedBreakNotification') {
+    if (reference === 'startExtendedBreak' || reference === 'startExtendedBreakNotification' || reference === 'finishExtendedBreak') {
       return 'extendedBreak'
     }
-    if (reference === 'startBreak' || reference === 'startBreakNotification') {
+    if (reference === 'startBreak' || reference === 'startBreakNotification' || reference === 'finishBreak') {
       return 'break'
     }
-    if (reference === 'startMicrobreak' || reference === 'startMicrobreakNotification') {
+    if (reference === 'startMicrobreak' || reference === 'startMicrobreakNotification' || reference === 'finishMicrobreak') {
       return 'microbreak'
     }
     const shouldBreak = this.settings.get('break')
@@ -430,7 +438,7 @@ class BreaksPlanner extends EventEmitter {
     const eventBase = type.charAt(0).toUpperCase() + type.slice(1)
     const notification = this.settings.get(`${type}Notification`)
     const notificationInterval = this.settings.get(`${type}NotificationInterval`)
-    if (notification) {
+    if (notification && interval > notificationInterval) {
       this.scheduler = new Scheduler(() => this.emit(`start${eventBase}Notification`), interval - notificationInterval, `start${eventBase}Notification`)
     } else {
       this.scheduler = new Scheduler(() => this.emit(`start${eventBase}`), interval, `start${eventBase}`)

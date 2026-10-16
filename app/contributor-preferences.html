@@ -87,13 +87,13 @@
         <span data-i18next="contributorPreferences.breakPostpone"></span>
       </div>
       <div>
-        <p data-i18next="contributorPreferences.breakPostponeInfo"></p>
+        <p data-i18next="contributorPreferences.unlimitedPostponeInfo"></p>
       </div>
       <div>
         <p data-i18next="contributorPreferences.miniBreaks"></p>
       </div>
       <div>
-        <label data-i18next="contributorPreferences.postponableFor" data-same-width-label for="miniBreakPostponableDurationPercent"></label>
+        <label data-i18next="contributorPreferences.skipAvailableAfter" data-same-width-label for="miniBreakPostponableDurationPercent"></label>
         <input type="range" min="5" max="100" step="5" list="tickmarksMiniBreakPostponableDurationPercent" name="microbreakPostponableDurationPercent" data-divisor="1" id="miniBreakPostponableDurationPercent">
         <datalist id="tickmarksMiniBreakPostponableDurationPercent">
           <option value="5"></option>
@@ -121,7 +121,7 @@
       </div>
       <div>
         <label data-i18next="contributorPreferences.postponeFor" data-same-width-label for="miniBreakPostponeTime"></label>
-        <input type="range" min="1" max="10" step="1" list="tickmarksMiniBreakPostponeTime" name="microbreakPostponeTime" data-divisor="60000" id="miniBreakPostponeTime">
+        <input type="range" min="1" max="30" step="1" list="tickmarksMiniBreakPostponeTime" name="microbreakPostponeTime" data-divisor="60000" id="miniBreakPostponeTime">
         <datalist id="tickmarksMiniBreakPostponeTime">
           <option value="1"></option>
           <option value="2"></option>
@@ -137,22 +137,10 @@
         <output data-unit="minutes"></output>
       </div>
       <div>
-        <label data-i18next="contributorPreferences.maxPostpones" data-same-width-label for="miniBreakPostponesLimit"></label>
-        <input type="range" min="1" max="5" step="1" list="tickmarksMiniBreakPostponesLimit" name="breakPostponesLimit" data-divisor="60000" id="miniBreakPostponesLimit">
-        <datalist id="tickmarksMiniBreakPostponesLimit">
-          <option value="1"></option>
-          <option value="2"></option>
-          <option value="3"></option>
-          <option value="4"></option>
-          <option value="5"></option>
-        </datalist>
-        <output data-unit="none"></output>
-      </div>
-      <div>
         <p data-i18next="contributorPreferences.longBreaks"></p>
       </div>
       <div>
-        <label data-i18next="contributorPreferences.postponableFor" data-same-width-label for="longBreakPostponableDurationPercent"></label>
+        <label data-i18next="contributorPreferences.skipAvailableAfter" data-same-width-label for="longBreakPostponableDurationPercent"></label>
         <input type="range" min="5" max="100" step="5" list="tickmarksLongBreakPostponableDurationPercent" name="breakPostponableDurationPercent" data-divisor="1" id="longBreakPostponableDurationPercent">
         <datalist id="tickmarksLongBreakPostponableDurationPercent">
           <option value="5"></option>
@@ -180,7 +168,7 @@
       </div>
       <div>
         <label data-i18next="contributorPreferences.postponeFor" data-same-width-label for="longBreakPostponeTime"></label>
-        <input type="range" min="1" max="10" step="1" list="tickmarksLongBreakPostponeTime" name="breakPostponeTime" data-divisor="60000" id="longBreakPostponeTime">
+        <input type="range" min="1" max="30" step="1" list="tickmarksLongBreakPostponeTime" name="breakPostponeTime" data-divisor="60000" id="longBreakPostponeTime">
         <datalist id="tickmarksLongBreakPostponeTime">
           <option value="1"></option>
           <option value="2"></option>
@@ -196,18 +184,6 @@
         <output data-unit="minutes"></output>
       </div>
       <div>
-        <label data-i18next="contributorPreferences.maxPostpones" data-same-width-label for="longBreakPostponesLimit"></label>
-        <input type="range" min="1" max="5" step="1" list="tickmarksLongBreakPostponesLimit" name="breakPostponesLimit" data-divisor="60000" id="longBreakPostponesLimit">
-        <datalist id="tickmarksLongBreakPostponesLimit">
-          <option value="1"></option>
-          <option value="2"></option>
-          <option value="3"></option>
-          <option value="4"></option>
-          <option value="5"></option>
-        </datalist>
-        <output data-unit="none"></output>
-      </div>
-      <div>
         <hr>
       </div>
       <div>
@@ -218,7 +194,7 @@
       </div>
       <div>
         <label data-i18next="contributorPreferences.pauseAfter" data-same-width-label for="pauseAfter"></label>
-        <input type="range" min="1" max="10" step="1" list="tickmarksPauseAfter" name="naturalBreaksInactivityResetTime" data-divisor="60000" id="pauseAfter">
+        <input type="range" min="1" max="60" step="1" list="tickmarksPauseAfter" name="naturalBreaksInactivityResetTime" data-divisor="60000" id="pauseAfter">
         <datalist id="tickmarksPauseAfter">
           <option value="1"></option>
           <option value="2"></option>

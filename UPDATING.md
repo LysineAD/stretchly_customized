@@ -55,11 +55,13 @@ Completion checks:
 
 - Fixed Compact bounds on both monitors before/after Start; all bundled advice fits without reducing fonts.
 - Button, native shared shortcut and each auto-start delay start all selected monitors together.
-- Waiting leaves progress full; after Start the full duration runs; the same shortcut then follows original Postpone/Skip rules.
+- Waiting leaves progress full; after Start the full duration runs; the same shortcut then postpones whenever enabled; strict mode continues to hide on-window Skip.
 - Existing Window/Full screen, click-through controls and notification behavior pass.
 - Strict mode hides on-window Skip but tray Skip/Pause/Preferences/Quit stay available.
-- The existing idle toggle enables/disables the new threshold and reset controls. Reset mode retains old behavior; preserve mode resumes the idle-onset countdown without losing Mini/Long/Extended cycle or Postpone counts. Check notification-stage transitions, disabling monitoring while idle, and intentional tray Pause.
+- The existing idle toggle enables/disables the new threshold and reset controls. Check all three idle modes, including partial reset retaining the next break/cycle while restarting the work interval. Complete reset retains old behavior; preserve mode resumes the idle-onset countdown without losing Mini/Long/Extended cycle or Postpone counts. Check notification-stage transitions, disabling monitoring while idle, and intentional tray Pause.
 - All Preferences controls save, and the last Schedule control is reachable by scrolling.
+
+Run `node scripts/check-manual-start.mjs dist/win-unpacked --postpone` for three repeated button/shortcut postponements per break type. See `CUSTOM_CODE_AUDIT.md` for the custom-only audit scope and findings.
 
 ## 3. Commit, publish source and replace the local app
 

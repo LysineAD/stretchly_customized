@@ -47,9 +47,8 @@ function formatUnitAndValue (unit, value, i18next) {
   }
 }
 
-// does not consider `postponesLimit`
-function canPostpone (postpone, passedPercent, postponePercent) {
-  return postpone && passedPercent <= postponePercent
+function canPostpone (postpone, passedPercent) {
+  return postpone && passedPercent < 100
 }
 
 // does not consider `postponesLimit`

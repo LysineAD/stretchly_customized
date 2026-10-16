@@ -72,8 +72,10 @@
       "autoStartOff": "Wait for Start",
       "autoStartSeconds": "{{seconds}} seconds",
       "idleThreshold": "Handle idle time after",
-      "resetOnIdle": "Reset the break schedule after idle time",
-      "idleHelp": "When checked, returning from idle starts a fresh schedule. Uncheck to preserve countdowns and progress toward Extended breaks. The qualifying idle period does not consume countdown time."
+      "idleHelp": "After the idle threshold, the schedule waits for you to return. Partial reset keeps the same next break and progress toward Extended breaks. No reset restores the countdown from when you became idle. Changes apply to the next qualifying idle period.",
+      "idlePreserve": "No reset: preserve the remaining countdown",
+      "idlePartial": "Partial reset: restart this interval, keep cycle progress",
+      "idleReset": "Complete reset: start a fresh schedule"
     },
     "schedule": {
       "miniBreaks": "Mini breaks:",
@@ -101,7 +103,8 @@
       "enableStrictLong": "Enable Strict mode for Long breaks",
       "enableStrictExtended": "Enable Strict mode for Extended breaks",
       "cantDisableBoth": "It is not possible to disable both types of breaks",
-      "strictButtonsInfo": "Strict mode hides the on-window Skip button. Postpone follows its usual limits. The tray menu always remains available for intentional Skip, Pause, Preferences, or Quit."
+      "strictButtonsInfo": "Strict mode hides the on-window Skip button. Enabled Postpone stays available and can be repeated without a limit. The tray menu remains available for intentional Skip, Pause, Preferences, or Quit.",
+      "postponeFor": "Postpone for:"
     },
     "theme": {
       "appearance": "Appearance:",
@@ -207,7 +210,9 @@
     "showTrayIcon": "Show tray icon",
     "toShowTrayIcon": "Show Stretchly icon in tray",
     "currentTimeInBreaks": "Current time",
-    "showCurrentTimeInBreaks": "Show current local time in break window"
+    "showCurrentTimeInBreaks": "Show current local time in break window",
+    "skipAvailableAfter": "Non-strict Skip available after:",
+    "unlimitedPostponeInfo": "Enabled postponement is unlimited. Set its delay here or in Schedule. The percentage below controls when Skip appears in non-strict mode; Postpone remains available throughout the break."
   },
   "utils": {
     "remaining": "{{count}} remaining",

@@ -787,10 +787,8 @@ function startMicrobreak () {
   const manualStart = settings.get('manualBreakStart')
   const breakDuration = settings.get('microbreakDuration')
   const strictMode = settings.get('microbreakStrictMode')
-  const postponesLimit = settings.get('microbreakPostponesLimit')
   const postponableDurationPercent = settings.get('microbreakPostponableDurationPercent')
-  const postponable = settings.get('microbreakPostpone') &&
-    breakPlanner.postponesNumber < postponesLimit && postponesLimit > 0
+  const postponable = settings.get('microbreakPostpone')
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
@@ -977,10 +975,8 @@ function startBreak (type = 'long') {
   const settingPrefix = isExtended ? 'extendedBreak' : 'break'
   const breakDuration = settings.get(`${settingPrefix}Duration`)
   const strictMode = settings.get(`${settingPrefix}StrictMode`)
-  const postponesLimit = settings.get(`${settingPrefix}PostponesLimit`)
   const postponableDurationPercent = settings.get(`${settingPrefix}PostponableDurationPercent`)
-  const postponable = settings.get(`${settingPrefix}Postpone`) &&
-    breakPlanner.postponesNumber < postponesLimit && postponesLimit > 0
+  const postponable = settings.get(`${settingPrefix}Postpone`)
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
@@ -1265,6 +1261,7 @@ function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true) {
 }
 
 function postponeMicrobreak () {
+  if (!microbreakWins || breakPlanner.scheduler?.reference !== 'finishMicrobreak') return
   increaseDanger(1)
   microbreakWins = breakComplete(false, microbreakWins, 'mini')
   breakPlanner.postponeCurrentBreak()
@@ -1273,6 +1270,7 @@ function postponeMicrobreak () {
 }
 
 function postponeBreak () {
+  if (!breakWins || breakPlanner.scheduler?.reference !== 'finishBreak') return
   increaseDanger(1)
   breakWins = breakComplete(false, breakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1281,6 +1279,7 @@ function postponeBreak () {
 }
 
 function postponeExtendedBreak () {
+  if (!extendedBreakWins || breakPlanner.scheduler?.reference !== 'finishExtendedBreak') return
   increaseDanger(1)
   extendedBreakWins = breakComplete(false, extendedBreakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1796,6 +1795,9 @@ ipcMain.on('save-setting', function (event, key, value) {
   if (key === 'naturalBreaksInactivityResetTime' &&
       (typeof value !== 'number' || !Number.isFinite(value) || value <= 20000)) return
   if (key === 'naturalBreaksResetOnIdle' && typeof value !== 'boolean') return
+  if (key === 'naturalBreaksIdleMode' && !['preserve', 'partial', 'reset'].includes(value)) return
+  if (['microbreakPostponeTime', 'breakPostponeTime', 'extendedBreakPostponeTime'].includes(key) &&
+      (!Number.isFinite(value) || value < 60000 || value > 1800000)) return
 
   if (key === 'naturalBreaks') {
     breakPlanner.naturalBreaks(value)

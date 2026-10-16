@@ -142,7 +142,7 @@ You'll be notified 10 seconds before a Mini break (and 30 seconds before a Long 
 
 <img src="notification.png" height="90">
 
-When a break starts, you can postpone it once for 2 minutes (Mini breaks) or 5 minutes (Long breaks). Then, after a specific time interval passes, you can skip the break. Both actions are available by clicking on the link at the bottom of window or by using the `Ctrl/Cmd + X` keyboard shortcut.
+In this Customized build, enabled postponement is available throughout a break and can be repeated without a count limit. Schedule offers separate 1–30 minute delay sliders for Mini, Long and Extended breaks (defaults 2, 5 and 5 minutes). Strict mode hides on-window Skip while retaining Postpone and the intentional tray Skip override. Both actions are available by clicking on the link at the bottom of window or by using the `Ctrl/Cmd + X` keyboard shortcut.
 
 <img src="skip.png" height="340">
 
@@ -294,7 +294,7 @@ E.g. if you live in Boston you would set:
 `posLongitude: 71`
 
 #### Editing postpone functionality [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-In the preferences file, you can edit `microbreakPostpone` and `breakPostpone` to enable or disable the ability to postpone breaks, `microbreakPostponeTime` and `breakPostponeTime` to change the postpone time in milliseconds, `microbreakPostponesLimit` and `breakPostponesLimit` to change the number of allowed postpones per break, and finally, `microbreakPostponableDurationPercent` and `breakPostponableDurationPercent` to change the percentage of the break during which the user can postpone it.
+Use Schedule to enable postponement and set its delay for each break type. Advanced values `microbreakPostponeTime`, `breakPostponeTime` and `extendedBreakPostponeTime` use milliseconds. Legacy `*PostponesLimit` values are ignored in this build. The `*PostponableDurationPercent` values retain their original effect on when non-strict Skip appears; they no longer hide Postpone.
 
 #### New version notification [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, set `notifyNewVersion: false,` to disable new version notification.
@@ -309,7 +309,7 @@ To play different sound for Mini breaks, set `miniBreakAudio` to desired value (
 To have different theme for Mini breaks, set `miniBreakColor` to desired value, ie `#123456`.
 
 #### Natural breaks inactivity time [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-The main Settings page now exposes this value with a 1–60 minute slider. Set `naturalBreaksResetOnIdle` to `false` (or uncheck **Reset the break schedule after idle time**) to preserve countdowns and cycle progress instead of resetting. The default is `true`.
+Main Settings exposes the threshold with a 1–60 minute slider and three idle modes: **No reset** restores the countdown from idle onset; **Partial reset** restarts the current work interval, keeping the same next break and Extended-cycle progress; **Complete reset** starts a fresh schedule. Timers resume when activity returns. Saved `naturalBreaksIdleMode` values are `preserve`, `partial`, and `reset`. Until a mode is selected, the previous `naturalBreaksResetOnIdle` boolean still determines behavior (false preserves; true resets).
 
 In the preferences file, set `naturalBreaksInactivityResetTime` to your preferred value (in milliseconds greater than than 20000ms). This is an idle time length, after which *Stretchly* breaks will be paused until the user resumes activity.
 

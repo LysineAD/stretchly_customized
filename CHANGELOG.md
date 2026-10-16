@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
+- Partial idle reset: restart the current interval without changing the next break or Extended-cycle progress.
+- Separate 1–30 minute postponement sliders and unlimited repeated postponement throughout active breaks.
 - Idle threshold slider (1–60 minutes) beside the existing idle-monitoring toggle.
 - Optional idle pause/resume that preserves countdowns from idle onset and Mini/Long/Extended cycle progress; reset remains the default.
 - Optional manual start for Mini, Long, and Extended breaks using a Start button and the existing global break shortcut.
@@ -21,6 +23,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Preferences uses scrolling, bounded window dimensions and responsive cards in two columns.
 
 ### Fixed
+- Preserve the exact displayed break type across notification and postponement transitions.
+- Ignore duplicate Postpone requests after the current break windows close.
+- Remove obsolete postponement caps and align contributor controls with the custom settings.
 - Disabling idle monitoring while idle resumes the schedule instead of leaving it stopped.
 - Break windows wait for presentation setup, fonts and rendering before appearing, preventing an unfinished initial frame.
 - Compact windows keep one size across advice and countdown phases.

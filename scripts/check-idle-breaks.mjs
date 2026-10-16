@@ -65,56 +65,58 @@ try {
       const { default: defaults } = require(join(app.getAppPath(), 'app/utils/defaultSettings.js'))
       const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const reports = []
-      for (const type of ['mini', 'long', 'extended', 'reset']) {
-        const values = {
-          ...defaults, naturalBreaks: true, monitorDnd: false,
-          naturalBreaksCheckInterval: 20, naturalBreaksInactivityResetTime: 60000,
-          naturalBreaksResetOnIdle: type === 'reset',
-          microbreakInterval: 600000, breakInterval: 1, extendedBreakInterval: 3
-        }
-        const planner = new BreaksPlanner({ get: key => values[key] })
-        let idleTime = 0
-        Object.defineProperty(planner.naturalBreaksManager, 'idleTime', { get: () => idleTime })
-        try {
-          planner.breakNumber = type === 'mini' || type === 'reset' ? 0 : 1
-          planner.longBreakNumber = type === 'extended' ? 2 : 1
-          planner.nextBreak()
-          planner.scheduler.now -= 180000
-          const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
-          const reference = planner.scheduler.reference
-          idleTime = 60000
-          await wait(90)
-          const pausedRemaining = planner.timeToNextBreak
-          if (type === 'reset') {
-            if (planner.scheduler.reference !== null || planner.longBreakNumber !== 0) throw Error('Reset mode must reset progress')
-          } else {
-            if (planner.idlePausedScheduler !== planner.scheduler || planner.scheduler.timer !== null) throw Error(type + ': scheduler not paused')
-            if (Math.abs(pausedRemaining - 480000) > 250) throw Error(type + ': idle-onset countdown not restored: ' + pausedRemaining)
-            if (JSON.stringify(counts) !== JSON.stringify([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber])) throw Error(type + ': cycle progress lost')
-            await wait(80)
-            if (planner.timeToNextBreak !== pausedRemaining) throw Error(type + ': paused timer continued counting')
+      for (const mode of ['preserve', 'partial', 'reset']) {
+        for (const type of ['mini', 'long', 'extended']) {
+          const values = {
+            ...defaults, naturalBreaks: true, monitorDnd: false,
+            naturalBreaksCheckInterval: 20, naturalBreaksInactivityResetTime: 60000,
+            naturalBreaksIdleMode: mode,
+            microbreakInterval: 600000, breakInterval: 1, extendedBreakInterval: 3
           }
-          idleTime = 0
-          await wait(90)
-          if (planner.scheduler.timer === null) throw Error(type + ': timer failed to resume')
-          if (type !== 'reset' && (planner.scheduler.reference !== reference || Math.abs(planner.timeToNextBreak - pausedRemaining) > 250)) throw Error(type + ': resumed wrong countdown')
-          reports.push({ type, reference, counts, pausedRemaining, resumedRemaining: planner.timeToNextBreak, cyclePreserved: type !== 'reset' })
-        } finally {
-          planner.naturalBreaksManager.stop()
-          planner.dndManager.stop()
-          planner.appExclusionsManager.stop()
-          planner.scheduler.cancel()
+          const planner = new BreaksPlanner({ get: key => values[key] })
+          let idleTime = 0
+          Object.defineProperty(planner.naturalBreaksManager, 'idleTime', { get: () => idleTime })
+          try {
+            planner.breakNumber = type === 'mini' ? 0 : 1
+            planner.longBreakNumber = type === 'extended' ? 2 : 1
+            planner.nextBreak()
+            planner.scheduler.now -= 180000
+            const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
+            const reference = planner.scheduler.reference
+            idleTime = 60000
+            await wait(90)
+            const pausedRemaining = planner.timeToNextBreak
+            if (mode === 'reset') {
+              if (planner.scheduler.reference !== null || planner.longBreakNumber !== 0) throw Error('Reset mode must reset progress')
+            } else {
+              if (planner.idlePausedScheduler !== planner.scheduler || planner.scheduler.timer !== null) throw Error(type + ': scheduler not paused')
+              if (Math.abs(pausedRemaining - (mode === 'partial' ? 600000 : 480000)) > 250) throw Error(type + ': idle-onset countdown not restored: ' + pausedRemaining)
+              if (JSON.stringify(counts) !== JSON.stringify([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber])) throw Error(type + ': cycle progress lost')
+              await wait(80)
+              if (planner.timeToNextBreak !== pausedRemaining) throw Error(type + ': paused timer continued counting')
+            }
+            idleTime = 0
+            await wait(90)
+            if (planner.scheduler.timer === null) throw Error(type + ': timer failed to resume')
+            if (mode !== 'reset' && (planner.scheduler.reference !== reference || Math.abs(planner.timeToNextBreak - pausedRemaining) > 250)) throw Error(type + ': resumed wrong countdown')
+            reports.push({ type, mode, reference, counts, pausedRemaining, resumedRemaining: planner.timeToNextBreak, cyclePreserved: mode !== 'reset' })
+          } finally {
+            planner.naturalBreaksManager.stop()
+            planner.dndManager.stop()
+            planner.appExclusionsManager.stop()
+            planner.scheduler.cancel()
+          }
         }
       }
       return reports
     })()`
   })
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
-  assert.equal(result.result.value.length, 4)
+  assert.equal(result.result.value.length, 9)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({
     app: folder, idleInput: 'simulated in isolated packaged planners', reports: result.result.value
   }, null, 2))
-  console.log('Packaged idle-onset countdown, Mini/Long/Extended preservation and reset checks passed.')
+  console.log('Packaged idle-onset countdown, Mini/Long/Extended preserve, partial-reset and complete-reset checks passed.')
 } finally {
   socket?.close()
   child.kill()

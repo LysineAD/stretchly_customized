@@ -132,8 +132,8 @@ describe('Others', () => {
     it('is true when postpone and before postpone percent', () => {
       canPostpone(true, 20, 30).should.equal(true)
     })
-    it('is false when postpone and after postpone percent', () => {
-      canPostpone(true, 40, 30).should.equal(false)
+    it('remains available after the former postpone window', () => {
+      canPostpone(true, 40, 30).should.equal(true)
     })
     it('is false when not postpone I', () => {
       canPostpone(false, 20, 30).should.equal(false)

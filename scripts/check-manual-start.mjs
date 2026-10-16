@@ -6,10 +6,11 @@ import { createServer } from 'node:net'
 import { promisify } from 'node:util'
 
 const folder = resolve(process.argv[2] || 'dist/win-unpacked')
+const postponeCheck = process.argv.includes('--postpone')
 const strictQuitCheck = process.argv.includes('--strict-quit')
 const autoStartCheck = process.argv.includes('--auto-start')
 const readinessCheck = process.argv.includes('--readiness')
-const output = resolve(readinessCheck ? '.scratch/readiness-check' : strictQuitCheck ? '.scratch/strict-quit-check' : autoStartCheck ? '.scratch/auto-start-check' : '.scratch/manual-start-check')
+const output = resolve(postponeCheck ? '.scratch/postpone-check' : readinessCheck ? '.scratch/readiness-check' : strictQuitCheck ? '.scratch/strict-quit-check' : autoStartCheck ? '.scratch/auto-start-check' : '.scratch/manual-start-check')
 const executable = join(folder, 'Stretchly Customized.exe')
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const run = promisify(execFile)
@@ -84,12 +85,15 @@ for (const type of ['mini', 'long', 'extended']) {
     extendedBreakInterval: 1,
     breakInterval: 0,
     microbreakInterval: type === 'extended' ? 1500 : 300000,
-    microbreakDuration: strictQuitCheck ? 30000 : 3000,
-    breakDuration: strictQuitCheck ? 30000 : 3000,
-    extendedBreakDuration: strictQuitCheck ? 30000 : 3000,
-    microbreakPostponableDurationPercent: 100,
-    breakPostponableDurationPercent: 100,
-    extendedBreakPostponableDurationPercent: 100,
+    microbreakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,
+    breakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,
+    extendedBreakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,
+    microbreakPostponeTime: postponeCheck ? 1500 : 120000,
+    breakPostponeTime: postponeCheck ? 1500 : 300000,
+    extendedBreakPostponeTime: postponeCheck ? 1500 : 300000,
+    microbreakPostponableDurationPercent: postponeCheck ? 1 : 100,
+    breakPostponableDurationPercent: postponeCheck ? 1 : 100,
+    extendedBreakPostponableDurationPercent: postponeCheck ? 1 : 100,
     microbreakStrictMode: true,
     breakStrictMode: true,
     extendedBreakStrictMode: true
@@ -239,6 +243,41 @@ for (const type of ['mini', 'long', 'extended']) {
     const repeat = JSON.parse(await connections[0].evaluate(stateExpression))
     assert.equal(repeat.started, running[0].started)
     assert.ok(repeat.progress <= running[0].progress)
+    if (postponeCheck) {
+      let active = connections.filter(connection => connection !== readinessInspector)
+      for (let count = 1; count <= 3; count++) {
+        await sleep(500)
+        const states = await Promise.all(active.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
+        for (const state of states) {
+          assert.equal(state.closeVisible, false, 'Strict Skip must stay hidden')
+          assert.equal(state.postponeVisible, true, 'Postpone survives previous postponements and the old percentage cutoff')
+        }
+        if (count % 2) await active[0].evaluate("document.querySelector('#postpone').click()")
+        else await pressShortcut()
+        for (const connection of active) connection.socket.close()
+        await sleep(200)
+        assert.equal((await targets()).filter(target => /\/(microbreak|break)\.html$/.test(target.url)).length, 0)
+        let nextBreaks = []
+        for (let attempt = 0; attempt < 70; attempt++) {
+          nextBreaks = (await targets()).filter(target => /\/(microbreak|break)\.html$/.test(target.url))
+          if (nextBreaks.length === waiting.length) break
+          await sleep(100)
+        }
+        assert.equal(nextBreaks.length, waiting.length)
+        active = await Promise.all(nextBreaks.map(connect))
+        connections.push(...active)
+        await sleep(400)
+        for (const connection of active) {
+          const state = JSON.parse(await connection.evaluate(stateExpression))
+          assert.equal(state.started, null)
+          assert.equal(state.startVisible, true)
+        }
+        await active[0].evaluate("document.querySelector('#start').click()")
+      }
+      reports.push({ type, waiting, repeatedPostponements: 3, triggers: 'button and native shared shortcut', strictSkipHidden: true, monitors: waiting.length })
+      console.log(type + ': three repeated strict-mode postponements passed')
+      continue
+    }
     if (strictQuitCheck) {
       const mainTarget = (await (await fetch('http://127.0.0.1:' + mainPort + '/json')).json())[0]
       const inspector = await connect(mainTarget)

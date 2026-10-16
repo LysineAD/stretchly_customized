@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import BreaksPlanner from '../app/breaksPlanner.js'
 import defaultSettings from '../app/utils/defaultSettings.js'
+import { getIdleMode } from '../app/utils/idleMode.js'
 import StatusMessages from '../app/utils/statusMessages.js'
 
 const idle = vi.hoisted(() => ({ started: null }))
@@ -85,6 +86,83 @@ describe('configurable idle breaks', () => {
     expect(callback).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(callback).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['Mini', 0, 0, 'startMicrobreakNotification'],
+    ['Long', 1, 0, 'startBreakNotification'],
+    ['Extended', 1, 2, 'startExtendedBreakNotification']
+  ])('partially resets the %s interval without advancing cycle progress', (_type, breakNumber, longBreakNumber, reference) => {
+    values.naturalBreaksIdleMode = 'partial'
+    planner.breakNumber = breakNumber
+    planner.longBreakNumber = longBreakNumber
+    planner.nextBreak()
+    planner.postponesNumber = 4
+    const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
+    vi.advanceTimersByTime(120000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(60000)
+    expect(planner.scheduler.reference).toBe(reference)
+    expect(planner.timeToNextBreak).toBe(600000)
+    vi.advanceTimersByTime(3600000)
+    expect(planner.timeToNextBreak).toBe(600000)
+    returnToWork()
+    expect(planner.timeToNextBreak).toBe(600000)
+    expect([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]).toEqual(counts)
+    vi.advanceTimersByTime(10000)
+    expect(planner.timeToNextBreak).toBe(590000)
+  })
+
+  it('partially resets a long-only interval to its full configured length', () => {
+    values.naturalBreaksIdleMode = 'partial'
+    values.microbreak = false
+    planner.nextBreak()
+    idle.started = Date.now()
+    vi.advanceTimersByTime(60000)
+    returnToWork()
+    expect(planner.timeToNextBreak).toBe(1200000)
+    expect(planner.longBreakNumber).toBe(1)
+  })
+
+  it.each(['microbreak', 'break', 'extendedBreak'])('repeatedly postpones the displayed %s without changing cycle progress', type => {
+    planner.nextBreak()
+    const event = type.charAt(0).toUpperCase() + type.slice(1)
+    const counts = [planner.breakNumber, planner.longBreakNumber]
+    values[type + 'PostponeTime'] = 60000
+    for (let index = 1; index <= 5; index++) {
+      planner.scheduler.cancel()
+      planner.emit(type + 'Started', false)
+      vi.advanceTimersByTime(values[type + 'Duration'] * 0.8)
+      planner.postponeCurrentBreak()
+      expect(planner.scheduler.reference).toBe('start' + event + 'Notification')
+      expect(planner.timeToNextBreak).toBe(60000)
+      expect(planner.postponesNumber).toBe(index)
+      expect([planner.breakNumber, planner.longBreakNumber]).toEqual(counts)
+    }
+  })
+
+  it('preserves old idle preferences until a new mode is explicitly selected', () => {
+    expect(getIdleMode({})).toBe('reset')
+    expect(getIdleMode({ naturalBreaksResetOnIdle: false })).toBe('preserve')
+    expect(getIdleMode({ naturalBreaksResetOnIdle: true })).toBe('reset')
+    expect(getIdleMode({ naturalBreaksResetOnIdle: false, naturalBreaksIdleMode: 'partial' })).toBe('partial')
+    expect(getIdleMode({ naturalBreaksResetOnIdle: false, naturalBreaksIdleMode: 'reset' })).toBe('reset')
+  })
+
+  it('partially resets after a notification without losing the next break type', () => {
+    values.naturalBreaksIdleMode = 'partial'
+    values.breakNotificationInterval = 120000
+    planner.breakNumber = 1
+    planner.on('startBreakNotification', () => planner.nextBreakAfterNotification())
+    planner.nextBreak()
+    vi.advanceTimersByTime(480000)
+    expect(planner.scheduler.reference).toBe('startBreak')
+    idle.started = Date.now()
+    vi.advanceTimersByTime(60000)
+    returnToWork()
+    expect(planner.scheduler.reference).toBe('startBreakNotification')
+    expect(planner.timeToNextBreak).toBe(600000)
+    expect(planner.longBreakNumber).toBe(1)
   })
 
   it('does not freeze or rewind the schedule for idle periods below the selected threshold', () => {

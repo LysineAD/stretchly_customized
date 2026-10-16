@@ -1,3 +1,4 @@
+import { getIdleMode } from './utils/idleMode.js'
 import VersionChecker from './utils/versionChecker.js'
 import { setSameWidths } from './utils/sameWidths.js'
 import HtmlTranslate from './utils/htmlTranslate.js'
@@ -11,6 +12,7 @@ let eventsAttached = false
 window.onload = async (e) => {
   const settings = await window.settings.currentSettings()
   settings.breakDisplayMode = getBreakDisplayMode(settings)
+  settings.naturalBreaksIdleMode = getIdleMode(settings)
   if (settings.disableAppUpdateFeatures) {
     document.querySelector('#checkNewVersion').closest('div').classList.add('hidden')
   }
