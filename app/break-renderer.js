@@ -1,3 +1,4 @@
+import { createBreakStatisticsView } from './utils/breakStatisticsView.js'
 import HtmlTranslate from './utils/htmlTranslate.js'
 import applyBreakHealthEffect from './utils/breakHealthEffect.js'
 import createRunOnce from './utils/runOnce.js'
@@ -23,6 +24,11 @@ window.onload = async (event) => {
     await window.breaks.signalLoaded()
     return
   }
+
+  const statisticsView = createBreakStatisticsView()
+  statisticsView.update(await window.breaks.statistics().catch(() => null) ?? {})
+  let lastStatisticsSecond = null
+  let statisticsPending = false
 
   const mainColor = await window.settings.get('mainColor')
 
@@ -83,6 +89,12 @@ window.onload = async (event) => {
       currentTimeElement.innerHTML = (new Date()).toLocaleTimeString()
     }
     const now = Date.now()
+    const statisticsSecond = Math.floor(now / 1000)
+    if (statisticsSecond !== lastStatisticsSecond && !statisticsPending) {
+      statisticsPending = true
+      lastStatisticsSecond = statisticsSecond
+      window.breaks.statistics().then(snapshot => { if (snapshot) statisticsView.update(snapshot) }).catch(() => {}).finally(() => { statisticsPending = false })
+    }
     const started = startControl.started
     const passed = started === null ? 0 : now - started
     const currentSecond = Math.floor(passed / 1000)

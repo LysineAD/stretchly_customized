@@ -19,3 +19,15 @@ No hard standard violation was established in the custom scope. The review sugge
 Regression coverage includes all three idle modes, idle-onset preservation, notification transitions, long-only partial reset, legacy settings, repeated postponement, duplicate actions, strict tray/quit behavior, fixed Compact dimensions and manual start. Packaged checks exercise real Preferences saving, all idle modes, and repeated button/native-shortcut postponement on both monitors using isolated profiles. Build-specific counts, hashes and results are recorded in the delivered `BUILD_INFO.json`; diagnostic images/reports remain in ignored `.scratch/`.
 
 This is a focused correctness and maintainability audit, not a claim that every custom path or every operating system is defect-free. Runtime verification targets the delivered Windows x64 app. Existing upstream structure and unrelated behavior were retained.
+
+## Follow-up revision — 2026-10-19
+
+Scope: early preparation, two-stage idle recovery, statistics and their interactions with existing custom Start, Postpone, Compact and mirrored windows.
+
+- Keep one original deadline per break episode. A separate notification scheduler preserves OS notification lead times even when the preparation window appears earlier. Every Postpone cancels auto-start; subsequent windows require Start.
+- Keep one statistics episode across repeated postponements. Exclude the intended first preparation Postpone; record additional clicks, actual timer time and completion separately. Daily summaries and a cached snapshot avoid an unbounded event log or per-monitor accounting.
+- Correct short-idle recovery to restart the entire Long cycle and retain the upcoming Long/Extended ordinal. Long idle escalates within the same idle period. Defer recovery during a running break and release it when monitoring is disabled or activity returns.
+- Fix integration edge cases: do not cancel a running break's statistics on idle recovery; do not resume statistics while another pause reason remains; exclude suspended time; isolate statistics-read failures from break presentation; retain a valid backup after corrupt-file recovery; wait for one final save on Quit.
+- Remove obsolete idle-mode logic and duplicate Postpone sliders. Keep advice typography; separate its scroll area from the always-visible statistics and controls.
+
+Automated coverage includes all three early leads, fixed deadlines despite late renderer readiness, repeated manual-only returns, independent notifications, idle-cycle ordinal preservation/escalation/deferred recovery, first-Postpone classification, timer/idle overlap, midnight/week boundaries, retention, backup recovery and Quit flushing. Packaged Windows results and layout screenshots remain a required delivery gate; record actual results in `BUILD_INFO.json`, without presenting model tests as native verification.

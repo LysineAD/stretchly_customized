@@ -6,30 +6,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 ### Added
-- Partial idle reset: restart the current interval without changing the next break or Extended-cycle progress.
-- Separate 1–30 minute postponement sliders and unlimited repeated postponement throughout active breaks.
-- Idle threshold slider (1–60 minutes) beside the existing idle-monitoring toggle.
-- Optional idle pause/resume that preserves countdowns from idle onset and Mini/Long/Extended cycle progress; reset remains the default.
-- Optional manual start for Mini, Long, and Extended breaks using a Start button and the existing global break shortcut.
-- Separate auto-start wait sliders for each break type, with defaults of 20, 60 and 120 seconds; 0 waits indefinitely.
-- Fixed 860 × 720 logical-pixel Compact windows that retain advice typography.
-- Optional click-through for Window, Full screen, and Compact, with visible controls remaining clickable.
-- Intentional tray Skip during strict breaks, with all tray actions and Quit always accessible.
-- Customization inventory and upstream update/build guide.
-- Local Windows builds are named Stretchly Customized.
+- Extended breaks, fixed 860 × 720 Compact windows, all-size click-through and mirrored manual Start with one shared global shortcut.
+- Today/Last 7 days statistics and lifetime totals in every break window, with current extra postpones and work stretch prominent.
+- Two idle thresholds: restart the current Long cycle while retaining its next Long/Extended ordinal, then reset the entire schedule after longer idle.
+- Scrolling Preferences with cards, accessible strict-mode tray actions, customization inventory and update/build guide.
+- Local Windows builds named Stretchly Customized.
 
 ### Changed
-- The existing break shortcut starts waiting breaks, then performs its original Postpone/Skip action after Start; the separate Start shortcut is removed.
-- Preferences uses scrolling, bounded window dimensions and responsive cards in two columns.
+- Manual-start reminders now appear early; the first auto-start lands at the original scheduled deadline.
+- Per-type preparation lead also sets Postpone duration, replacing separate delay sliders. After any Postpone, explicit Start is required; auto-start is not armed again for that break.
+- The first preparation Postpone before the deadline is normal, excluded from extra-postpone statistics. Starting within one minute of the original deadline qualifies as without delay.
+- Strict mode keeps on-window Skip hidden and enabled Postpone available without a count limit; the tray retains intentional Skip, Pause, Preferences and Quit.
+- Replaced previous idle preserve/partial/reset modes with the two-threshold policy.
 
 ### Fixed
-- Preserve the exact displayed break type across notification and postponement transitions.
-- Ignore duplicate Postpone requests after the current break windows close.
-- Remove obsolete postponement caps and align contributor controls with the custom settings.
-- Disabling idle monitoring while idle resumes the schedule instead of leaving it stopped.
-- Break windows wait for presentation setup, fonts and rendering before appearing, preventing an unfinished initial frame.
-- Compact windows keep one size across advice and countdown phases.
-- Strict mode no longer removes tray controls or prevents intentional Quit.
+- Retain the selected break type and cycle progress across repeated postponements; ignore duplicate actions from mirrored windows.
+- Keep OS notification timing separate from preparation reminders.
+- Persist bounded daily summaries without logging input or application history; recover from a damaged statistics file using its backup.
 
 ## [1.22.1] - 2026-08-13
 ### Fixed

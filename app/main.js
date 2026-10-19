@@ -22,6 +22,9 @@ import {
 } from './utils/utils.js'
 import IdeasLoader from './utils/ideasLoader.js'
 import BreaksPlanner from './breaksPlanner.js'
+import BreakStatistics from './utils/breakStatistics.js'
+import StatisticsFile from './utils/statisticsFile.js'
+import { getIdleThresholds } from './utils/idleThresholds.js'
 import AppIcon from './utils/appIcon.js'
 import { UntilMorning } from './utils/untilMorning.js'
 import AutostartManager from './utils/autostartManager.js'
@@ -78,6 +81,12 @@ nativeTheme.on('updated', function theThemeHasChanged () {
 let microbreakIdeas
 let breakIdeas
 let breakPlanner
+let statistics = null
+let statisticsFile = null
+let statisticsCheckpoint = null
+let statisticsQuitFlush = false
+let statisticsQuitPending = false
+let statisticsCache = null
 let appIcon = null
 let autostartManager = null
 let displayManager = null
@@ -220,7 +229,16 @@ app.on('ready', initialize)
 app.on('window-all-closed', () => {
   // do nothing, so app wont get closed
 })
-app.on('before-quit', () => {
+app.on('before-quit', event => {
+  if (statistics && !statisticsQuitFlush) {
+    event.preventDefault()
+    if (statisticsQuitPending) return
+    statisticsQuitPending = true
+    clearInterval(statisticsCheckpoint)
+    statisticsFile.schedule(() => statistics.serialize())
+    statisticsFile.flush().finally(() => { statisticsQuitFlush = true; app.quit() })
+    return
+  }
   isQuitting = true
   breakStartController.clear()
   globalShortcut.unregisterAll()
@@ -358,12 +376,28 @@ async function initialize (isAppStart = true) {
       })
     })
   }
+  if (!statistics) {
+    let reportedStorageError = false
+    statisticsFile = new StatisticsFile(join(app.getPath('userData'), 'stretchly-statistics.json'), error => {
+      if (!reportedStorageError) log.warn('Stretchly: statistics could not be saved', error.message)
+      reportedStorageError = true
+    })
+    statistics = new BreakStatistics({
+      data: await statisticsFile.load(),
+      onChange: () => {
+        statisticsCache = null
+        statisticsFile.schedule(() => statistics.serialize())
+      }
+    })
+    statisticsCheckpoint = setInterval(() => statisticsFile.schedule(() => statistics.serialize()), 300000)
+    statisticsCheckpoint.unref()
+  }
   if (!breakPlanner) {
     breakPlanner = new BreaksPlanner(settings)
     breakPlanner.nextBreak()
-    breakPlanner.on('startMicrobreakNotification', () => { startMicrobreakNotification() })
-    breakPlanner.on('startBreakNotification', () => { startBreakNotification() })
-    breakPlanner.on('startExtendedBreakNotification', () => { startExtendedBreakNotification() })
+    breakPlanner.on('startMicrobreakNotification', advance => { startMicrobreakNotification(advance) })
+    breakPlanner.on('startBreakNotification', advance => { startBreakNotification(advance) })
+    breakPlanner.on('startExtendedBreakNotification', advance => { startExtendedBreakNotification(advance) })
     breakPlanner.on('startMicrobreak', () => { startMicrobreak() })
     breakPlanner.on('finishMicrobreak', (shouldPlaySound, shouldPlanNext) => {
       if (settings.get('miniBreakManualFinish')) {
@@ -391,6 +425,27 @@ async function initialize (isAppStart = true) {
       decreaseDanger(2)
       finishExtendedBreak(shouldPlaySound, shouldPlanNext)
     })
+    breakPlanner.naturalBreaksManager.on('idleTimeObserved', idleTime => {
+      const threshold = getIdleThresholds(settings.store).short
+      statistics.observeIdle(idleTime, threshold)
+    })
+    breakPlanner.on('idleRecoveryStarted', () => {
+      const waiting = breakStartController.session
+      if (waiting && waiting.started === null) {
+        const type = waiting.type
+        if (microbreakWins) microbreakWins = breakComplete(false, microbreakWins, 'mini')
+        if (breakWins) breakWins = breakComplete(false, breakWins, 'long')
+        if (extendedBreakWins) extendedBreakWins = breakComplete(false, extendedBreakWins, 'long')
+        breakPlanner.scheduler.reference = type === 'mini' ? 'startMicrobreak' : type === 'extended' ? 'startExtendedBreak' : 'startBreak'
+        breakPlanner.scheduler.waitingForStart = false
+      }
+      if (!statistics.episode?.hasStarted) statistics.cancel()
+    })
+    breakPlanner.on('idleRecoveryFinished', () => statistics.observeIdle(0, getIdleThresholds(settings.store).short))
+    for (const event of ['dndStarted', 'dndFinished', 'appExclusionStarted', 'appExclusionFinished']) {
+      const manager = event.startsWith('dnd') ? breakPlanner.dndManager : breakPlanner.appExclusionsManager
+      manager.on(event, updateStatisticsPause)
+    }
     breakPlanner.on('resumeBreaks', () => { resumeBreaks() })
     breakPlanner.on('updateToolTip', function () {
       updateTray()
@@ -509,8 +564,16 @@ i18next.on('languageChanged', () => {
   loadIdeas()
 })
 
+function updateStatisticsPause () {
+  if (!statistics || breakPlanner._isFinishingBreak) return
+  if (breakPlanner.isPaused || breakPlanner.dndManager.isOnDnd || breakPlanner.appExclusionsManager.isSchedulerCleared) {
+    statistics.pause()
+  } else if (statistics.mode === 'paused') statistics.resume()
+}
+
 function onSuspendOrLock () {
   log.info('System: suspend or lock')
+  statistics?.suspend()
   if (settings.get('pauseForSuspendOrLock')) {
     if (breakPlanner.isPaused || breakPlanner.dndManager.isOnDnd ||
       breakPlanner.naturalBreaksManager.isSchedulerCleared ||
@@ -535,6 +598,7 @@ function onResumeOrUnlock () {
     // correct the planner for the time spent in suspend
     breakPlanner.correctScheduler()
   }
+  if (!breakPlanner.isPaused && !breakPlanner.dndManager.isOnDnd && !breakPlanner.appExclusionsManager.isSchedulerCleared) statistics?.resume()
   updateTray()
 }
 
@@ -739,24 +803,24 @@ function checkVersion () {
   }
 }
 
-function startMicrobreakNotification () {
+function startMicrobreakNotification (advance = true) {
   showNotification(i18next.t('main.microbreakIn', { seconds: settings.get('microbreakNotificationInterval') / 1000 }))
   log.info('Stretchly: showing Mini break notification')
-  breakPlanner.nextBreakAfterNotification()
+  if (advance) breakPlanner.nextBreakAfterNotification()
   updateTray()
 }
 
-function startBreakNotification () {
+function startBreakNotification (advance = true) {
   showNotification(i18next.t('main.breakIn', { seconds: settings.get('breakNotificationInterval') / 1000 }))
   log.info('Stretchly: showing Long break notification')
-  breakPlanner.nextBreakAfterNotification()
+  if (advance) breakPlanner.nextBreakAfterNotification()
   updateTray()
 }
 
-function startExtendedBreakNotification () {
+function startExtendedBreakNotification (advance = true) {
   showNotification(i18next.t('main.extendedBreakIn', { seconds: settings.get('extendedBreakNotificationInterval') / 1000 }))
   log.info('Stretchly: showing Extended break notification')
-  breakPlanner.nextBreakAfterNotification()
+  if (advance) breakPlanner.nextBreakAfterNotification()
   updateTray()
 }
 
@@ -784,7 +848,7 @@ function startMicrobreak () {
   }
 
   if (settings.get('manualBreakStart') && (breakWins || extendedBreakWins)) return
-  const manualStart = settings.get('manualBreakStart')
+  const manualStart = settings.get('manualBreakStart') || breakPlanner.postponedReminder
   const breakDuration = settings.get('microbreakDuration')
   const strictMode = settings.get('microbreakStrictMode')
   const postponableDurationPercent = settings.get('microbreakPostponableDurationPercent')
@@ -792,13 +856,16 @@ function startMicrobreak () {
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
+  statistics.offer({ type: 'mini', dueAt: breakPlanner.breakDueAt ?? Date.now(), early: breakPlanner.reminderLead > 0, plannedIntervalMs: settings.get('microbreakInterval') })
+  const automaticStarted = Date.now()
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
   const startSession = manualStart
     ? breakStartController.wait('mini', microbreakWins, () => {
+      statistics.start('mini', breakDuration)
       breakPlanner.emit('microbreakStarted', true)
       updateTray()
-    }, settings.get('miniBreakAutoStartDelay'))
+    }, breakPlanner.postponedReminder ? 0 : settings.get('miniBreakAutoStartDelay'), breakPlanner.breakDueAt)
     : null
   if (manualStart) breakPlanner.waitForBreakStart('mini')
 
@@ -813,7 +880,7 @@ function startMicrobreak () {
   }
 
   ipcMain.handle('send-mini-break-data', (event) => {
-    const startTime = startSession ? startSession.started : Date.now()
+    const startTime = startSession ? startSession.started : automaticStarted
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
       breakActionShortcut.configure(shortcut, () => {
@@ -915,6 +982,7 @@ function startMicrobreak () {
       }
       if (localDisplayId === emitOnId && manualStart) breakStartController.arm()
       if (localDisplayId === emitOnId && !manualStart) {
+        statistics.start('mini', breakDuration)
         breakPlanner.emit('microbreakStarted', true)
         log.info('Stretchly: starting Mini break')
       }
@@ -971,7 +1039,7 @@ function startBreak (type = 'long') {
   }
 
   if (settings.get('manualBreakStart') && (microbreakWins || breakWins || extendedBreakWins)) return
-  const manualStart = settings.get('manualBreakStart')
+  const manualStart = settings.get('manualBreakStart') || breakPlanner.postponedReminder
   const settingPrefix = isExtended ? 'extendedBreak' : 'break'
   const breakDuration = settings.get(`${settingPrefix}Duration`)
   const strictMode = settings.get(`${settingPrefix}StrictMode`)
@@ -980,6 +1048,8 @@ function startBreak (type = 'long') {
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
+  statistics.offer({ type, dueAt: breakPlanner.breakDueAt ?? Date.now(), early: breakPlanner.reminderLead > 0, plannedIntervalMs: settings.get('microbreakInterval') * (settings.get('microbreak') ? 1 : settings.get('breakInterval') + 1) })
+  const automaticStarted = Date.now()
   const modalPath = 'file://' + join(__dirname, '/break.html')
   if (isExtended) {
     extendedBreakWins = []
@@ -990,9 +1060,10 @@ function startBreak (type = 'long') {
   const bridgeType = isExtended ? 'extended' : 'long'
   const startSession = manualStart
     ? breakStartController.wait(bridgeType, breakWindows, () => {
+      statistics.start(type, breakDuration)
       breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
       updateTray()
-    }, settings.get(isExtended ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'))
+    }, breakPlanner.postponedReminder ? 0 : settings.get(isExtended ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'), breakPlanner.breakDueAt)
     : null
   if (manualStart) breakPlanner.waitForBreakStart(bridgeType)
 
@@ -1008,7 +1079,7 @@ function startBreak (type = 'long') {
   }
 
   ipcMain.handle(`send-${bridgeType}-break-data`, (event) => {
-    const startTime = startSession ? startSession.started : Date.now()
+    const startTime = startSession ? startSession.started : automaticStarted
     const shortcut = settings.get('endBreakShortcut')
     if (shortcut && endBreakShortcutSupported) {
       breakActionShortcut.configure(shortcut, () => {
@@ -1122,6 +1193,7 @@ function startBreak (type = 'long') {
       }
       if (localDisplayId === emitOnId && manualStart) breakStartController.arm()
       if (localDisplayId === emitOnId && !manualStart) {
+        statistics.start(type, breakDuration)
         breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
         log.info(`Stretchly: starting ${breakLabel} break`)
       }
@@ -1228,6 +1300,10 @@ const enterLongBreakManualContinuation = (shouldPlaySound) => enterManualAwaitPh
 const enterExtendedBreakManualContinuation = (shouldPlaySound) => enterManualAwaitPhase('extended', shouldPlaySound)
 
 function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true) {
+  if (!microbreakWins) return
+  const episode = statistics?.episode
+  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+  else statistics?.cancel()
   microbreakWins = breakComplete(shouldPlaySound, microbreakWins, 'mini')
   log.info(`Stretchly: finishing Mini break (shouldPlanNext: ${shouldPlanNext})`)
   if (shouldPlanNext) {
@@ -1239,6 +1315,10 @@ function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true) {
 }
 
 function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
+  if (!breakWins) return
+  const episode = statistics?.episode
+  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+  else statistics?.cancel()
   breakWins = breakComplete(shouldPlaySound, breakWins, 'long')
   log.info(`Stretchly: finishing Long break (shouldPlanNext: ${shouldPlanNext})`)
   if (shouldPlanNext) {
@@ -1250,6 +1330,10 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
 }
 
 function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true) {
+  if (!extendedBreakWins) return
+  const episode = statistics?.episode
+  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+  else statistics?.cancel()
   extendedBreakWins = breakComplete(shouldPlaySound, extendedBreakWins, 'long')
   log.info(`Stretchly: finishing Extended break (shouldPlanNext: ${shouldPlanNext})`)
   if (shouldPlanNext) {
@@ -1262,6 +1346,7 @@ function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true) {
 
 function postponeMicrobreak () {
   if (!microbreakWins || breakPlanner.scheduler?.reference !== 'finishMicrobreak') return
+  statistics?.postpone()
   increaseDanger(1)
   microbreakWins = breakComplete(false, microbreakWins, 'mini')
   breakPlanner.postponeCurrentBreak()
@@ -1271,6 +1356,7 @@ function postponeMicrobreak () {
 
 function postponeBreak () {
   if (!breakWins || breakPlanner.scheduler?.reference !== 'finishBreak') return
+  statistics?.postpone()
   increaseDanger(1)
   breakWins = breakComplete(false, breakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1280,6 +1366,7 @@ function postponeBreak () {
 
 function postponeExtendedBreak () {
   if (!extendedBreakWins || breakPlanner.scheduler?.reference !== 'finishExtendedBreak') return
+  statistics?.postpone()
   increaseDanger(1)
   extendedBreakWins = breakComplete(false, extendedBreakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1357,6 +1444,7 @@ function skipToExtendedBreak (delay) {
 }
 
 function resetBreaks () {
+  statistics?.cancel()
   if (microbreakWins) {
     microbreakWins = breakComplete(false, microbreakWins)
   }
@@ -1409,6 +1497,7 @@ function loadIdeas () {
 }
 
 function pauseBreaks (milliseconds) {
+  statistics?.pause()
   if (microbreakWins) {
     increaseDanger(1)
     finishMicrobreak(false)
@@ -1431,6 +1520,7 @@ function resumeBreaks (notify = true) {
     log.info('Stretchly: not resuming breaks because in Do Not Disturb')
   } else {
     breakPlanner.resume()
+    statistics?.resume()
     log.info('Stretchly: resuming breaks')
     if (notify) {
       showNotification(i18next.t('main.resumingBreaks'))
@@ -1758,6 +1848,16 @@ ipcMain.on('finish-extended-break', function (event, shouldPlaySound, manualAwai
   finishExtendedBreak(shouldPlaySound)
 })
 
+ipcMain.handle('break-statistics-data', event => {
+  const windows = [microbreakWins, breakWins, extendedBreakWins].filter(Boolean).flat()
+  if (!windows.some(window => !window.isDestroyed() && window.webContents === event.sender)) return null
+  const second = Math.floor(Date.now() / 1000)
+  if (!statisticsCache || statisticsCache.second !== second) {
+    statisticsCache = { second, snapshot: statistics.snapshot(settings.get('microbreakInterval')) }
+  }
+  return statisticsCache.snapshot
+})
+
 ipcMain.handle('start-visible-break', (event, type) => breakStartController.start(type, event.sender))
 
 ipcMain.handle('save-break-shortcut', (event, value) => {
@@ -1777,6 +1877,10 @@ ipcMain.on('save-setting', function (event, key, value) {
     const maximum = key === 'miniBreakAutoStartDelay' ? 120000 : key === 'longBreakAutoStartDelay' ? 900000 : 1800000
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > maximum) return
     settings.set(key, value)
+    if (value > 0) {
+      const postponeKey = key === 'miniBreakAutoStartDelay' ? 'microbreakPostponeTime' : key === 'longBreakAutoStartDelay' ? 'breakPostponeTime' : 'extendedBreakPostponeTime'
+      settings.set(postponeKey, value)
+    }
     return
   }
 
@@ -1792,10 +1896,15 @@ ipcMain.on('save-setting', function (event, key, value) {
     return
   }
 
-  if (key === 'naturalBreaksInactivityResetTime' &&
-      (typeof value !== 'number' || !Number.isFinite(value) || value <= 20000)) return
-  if (key === 'naturalBreaksResetOnIdle' && typeof value !== 'boolean') return
-  if (key === 'naturalBreaksIdleMode' && !['preserve', 'partial', 'reset'].includes(value)) return
+  if (['naturalBreaksInactivityResetTime', 'naturalBreaksLongIdleResetTime'].includes(key)) {
+    const minimum = key === 'naturalBreaksInactivityResetTime' ? 60000 : 120000
+    const maximum = key === 'naturalBreaksInactivityResetTime' ? 3600000 : 10800000
+    if (!Number.isFinite(value) || value < minimum || value > maximum) return
+    const thresholds = getIdleThresholds({ ...settings.store, [key]: value })
+    settings.set('naturalBreaksInactivityResetTime', thresholds.short)
+    settings.set('naturalBreaksLongIdleResetTime', thresholds.long)
+    return
+  }
   if (['microbreakPostponeTime', 'breakPostponeTime', 'extendedBreakPostponeTime'].includes(key) &&
       (!Number.isFinite(value) || value < 60000 || value > 1800000)) return
 

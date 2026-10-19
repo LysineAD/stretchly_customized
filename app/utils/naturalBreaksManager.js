@@ -2,6 +2,7 @@ import EventEmitter from 'events'
 import log from 'electron-log/main.js'
 import { desktopIdle } from 'node-desktop-idle-v2'
 import { powerMonitor } from 'electron'
+import { getIdleThresholds } from './idleThresholds.js'
 
 class NaturalBreaksManager extends EventEmitter {
   constructor (settings) {
@@ -12,9 +13,8 @@ class NaturalBreaksManager extends EventEmitter {
     this.timer = null
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
-    if (this.usingNaturalBreaks) {
-      this.start()
-    }
+    this.lastObservedIdleTime = 0
+    if (this.usingNaturalBreaks) this.start()
   }
 
   start () {
@@ -27,46 +27,61 @@ class NaturalBreaksManager extends EventEmitter {
 
   stop () {
     if (!this.timer) return
-    const wasCleared = this.isSchedulerCleared
+    const wasOnIdle = this.isOnNaturalBreak
+    const idleTime = this.lastObservedIdleTime
     this.usingNaturalBreaks = false
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
+    this.lastObservedIdleTime = 0
     clearInterval(this.timer)
     this.timer = null
     desktopIdle.stopMonitoring()
-    if (wasCleared) this.emit('naturalBreakFinished')
+    if (wasOnIdle) this.emit('idlePeriodFinished', idleTime)
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
   get idleTime () {
     if (this.usingNaturalBreaks) {
       return (powerMonitor.getSystemIdleTime() || desktopIdle.getIdleTime()) * 1000
-    } else {
-      return 0
     }
+    return 0
   }
 
   _checkIdleTime () {
     let lastIdleTime = 0
     this.timer = setInterval(() => {
       const idleTime = this.idleTime
+      const previousIdleTime = this.lastObservedIdleTime
+      this.lastObservedIdleTime = idleTime
       this.emit('idleTimeObserved', idleTime, lastIdleTime)
-      if (!this.isOnNaturalBreak && idleTime > 20000) {
+      const wasOnIdle = this.isOnNaturalBreak
+      if (!wasOnIdle && idleTime > 20000) {
         this.isOnNaturalBreak = true
       }
       if (this.isOnNaturalBreak && idleTime < 20000) {
         this.isOnNaturalBreak = false
-        if (this.isSchedulerCleared) {
-          this.isSchedulerCleared = false
-          this.emit('naturalBreakFinished')
+        const finishedIdleTime = previousIdleTime
+        this.isSchedulerCleared = false
+        this.emit('idlePeriodFinished', finishedIdleTime)
+      } else if (this.isOnNaturalBreak) {
+        const { short, long } = getIdleThresholds(this._settingsSnapshot())
+        if (idleTime >= short) {
+          this.isSchedulerCleared = true
+          this.emit('idleShortThresholdReached', idleTime)
         }
-      }
-      if (this.isOnNaturalBreak && idleTime >= this.settings.get('naturalBreaksInactivityResetTime')) {
-        this.isSchedulerCleared = true
-        this.emit('clearBreakScheduler', idleTime)
+        if (idleTime >= long) {
+          this.emit('idleLongThresholdReached', idleTime)
+        }
       }
       lastIdleTime = idleTime
     }, this.naturalBreaksCheckInterval)
+  }
+
+  _settingsSnapshot () {
+    return {
+      naturalBreaksInactivityResetTime: this.settings.get('naturalBreaksInactivityResetTime'),
+      naturalBreaksLongIdleResetTime: this.settings.get('naturalBreaksLongIdleResetTime')
+    }
   }
 }
 

@@ -8,6 +8,7 @@ const main = readFileSync(new URL('../app/main.js', import.meta.url), 'utf8')
 const menuSource = main.slice(main.indexOf('function getTrayMenuTemplate ()'), main.indexOf('function updateToolTip ()'))
 const quitSource = main.slice(main.indexOf("app.on('before-quit'"), main.indexOf('async function initialize'))
 const contextFor = reference => ({
+  statistics: null,
   settings: { get: key => ['microbreakStrictMode', 'breakStrictMode', 'extendedBreakStrictMode', 'microbreak', 'break', 'extendedBreak'].includes(key) },
   breakPlanner: { scheduler: { reference }, dndManager: {}, appExclusionsManager: {} },
   global: {},
@@ -44,6 +45,7 @@ describe('customized usability regressions', () => {
     const postponeCurrentBreak = vi.fn()
     const context = {
       [windowsKey]: [{}],
+      statistics: { postpone: vi.fn() },
       breakPlanner: { scheduler: { reference }, postponeCurrentBreak },
       increaseDanger: vi.fn(),
       breakComplete: () => null,
@@ -61,9 +63,7 @@ describe('customized usability regressions', () => {
   it('does not offer obsolete postponement caps and keeps shared slider ranges aligned', () => {
     const document = new JSDOM(readFileSync(new URL('../app/contributor-preferences.html', import.meta.url), 'utf8')).window.document
     expect(document.querySelectorAll('input[name$="PostponesLimit"]')).toHaveLength(0)
-    for (const id of ['miniBreakPostponeTime', 'longBreakPostponeTime']) {
-      expect(document.querySelector('#' + id).max).toBe('30')
-    }
+    expect(document.querySelectorAll('input[name$=PostponeTime]')).toHaveLength(0)
     expect(document.querySelector('#pauseAfter').max).toBe('60')
   })
 
@@ -119,5 +119,54 @@ describe('customized usability regressions', () => {
     expect(event.preventDefault).not.toHaveBeenCalled()
     expect(context.isQuitting).toBe(true)
     expect(context.globalShortcut.unregisterAll).toHaveBeenCalled()
+  })
+
+  it('flushes statistics once before allowing Quit and unregistering shortcuts', async () => {
+    let callback, completeFlush
+    const flushed = new Promise(resolve => { completeFlush = resolve })
+    const context = {
+      ...contextFor('finishMicrobreak'),
+      statistics: { serialize: () => '{}' },
+      statisticsFile: { schedule: vi.fn(), flush: vi.fn(() => flushed) },
+      statisticsCheckpoint: null,
+      statisticsQuitFlush: false,
+      statisticsQuitPending: false,
+      clearInterval: vi.fn(),
+      isQuitting: false,
+      app: { on: (_event, handler) => { callback = handler }, quit: vi.fn() },
+      globalShortcut: { unregisterAll: vi.fn() },
+      autostartManager: null,
+      processWin: null
+    }
+    runInNewContext(quitSource, context)
+    const event = { preventDefault: vi.fn() }
+    callback(event)
+    callback(event)
+    expect(event.preventDefault).toHaveBeenCalledTimes(2)
+    expect(context.statisticsFile.flush).toHaveBeenCalledOnce()
+    expect(context.globalShortcut.unregisterAll).not.toHaveBeenCalled()
+    completeFlush()
+    await flushed
+    expect(context.app.quit).toHaveBeenCalledOnce()
+    callback(event)
+    expect(context.isQuitting).toBe(true)
+    expect(context.globalShortcut.unregisterAll).toHaveBeenCalledOnce()
+  })
+
+  it('resumes statistics only after all schedule pause reasons end', () => {
+    const from = main.indexOf('function updateStatisticsPause ()')
+    const to = main.indexOf('\nfunction onSuspendOrLock', from)
+    const context = {
+      statistics: { mode: 'paused', pause: vi.fn(), resume: vi.fn() },
+      breakPlanner: { isPaused: false, _isFinishingBreak: false, dndManager: { isOnDnd: false }, appExclusionsManager: { isSchedulerCleared: true } }
+    }
+    runInNewContext(main.slice(from, to) + '\nupdateStatisticsPause()', context)
+    expect(context.statistics.resume).not.toHaveBeenCalled()
+    context.breakPlanner.appExclusionsManager.isSchedulerCleared = false
+    runInNewContext('updateStatisticsPause()', context)
+    expect(context.statistics.resume).toHaveBeenCalledOnce()
+    context.breakPlanner._isFinishingBreak = true
+    runInNewContext('updateStatisticsPause()', context)
+    expect(context.statistics.resume).toHaveBeenCalledOnce()
   })
 })

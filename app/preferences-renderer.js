@@ -1,4 +1,4 @@
-import { getIdleMode } from './utils/idleMode.js'
+import { getIdleThresholds } from './utils/idleThresholds.js'
 import VersionChecker from './utils/versionChecker.js'
 import { setSameWidths } from './utils/sameWidths.js'
 import HtmlTranslate from './utils/htmlTranslate.js'
@@ -12,7 +12,9 @@ let eventsAttached = false
 window.onload = async (e) => {
   const settings = await window.settings.currentSettings()
   settings.breakDisplayMode = getBreakDisplayMode(settings)
-  settings.naturalBreaksIdleMode = getIdleMode(settings)
+  const idleThresholds = getIdleThresholds(settings)
+  settings.naturalBreaksInactivityResetTime = idleThresholds.short
+  settings.naturalBreaksLongIdleResetTime = idleThresholds.long
   if (settings.disableAppUpdateFeatures) {
     document.querySelector('#checkNewVersion').closest('div').classList.add('hidden')
   }
@@ -192,6 +194,32 @@ window.onload = async (e) => {
 
   document.querySelector('#idleControls').disabled = !settings.naturalBreaks
 
+  const shortIdleThreshold = document.querySelector('#idleThreshold')
+  const longIdleThreshold = document.querySelector('#idleLongThreshold')
+  shortIdleThreshold.value = idleThresholds.short / 60000
+  longIdleThreshold.value = idleThresholds.long / 60000
+  const constrainIdleThresholds = async (saveLong = false) => {
+    const minimumLong = Math.max(2, Number(shortIdleThreshold.value) + 1)
+    longIdleThreshold.min = String(minimumLong)
+    if (Number(longIdleThreshold.value) < minimumLong) {
+      longIdleThreshold.value = String(minimumLong)
+      const output = longIdleThreshold.closest('div').querySelector('output')
+      output.innerHTML = await formatRangeOutput(output.dataset.unit, longIdleThreshold.value)
+      if (saveLong) {
+        window.settings.saveSettings(longIdleThreshold.name, Number(longIdleThreshold.value) * 60000)
+      }
+    }
+  }
+  await constrainIdleThresholds()
+  if (!eventsAttached) {
+    shortIdleThreshold.addEventListener('input', () => constrainIdleThresholds())
+    shortIdleThreshold.addEventListener('change', () => {
+      constrainIdleThresholds()
+      window.settings.saveSettings(longIdleThreshold.name, Number(longIdleThreshold.value) * 60000)
+    })
+    longIdleThreshold.addEventListener('input', () => constrainIdleThresholds())
+  }
+
   document.querySelectorAll('input[type="radio"]').forEach(radio => {
     let value
     switch (radio.value) {
@@ -240,6 +268,14 @@ window.onload = async (e) => {
   document.querySelectorAll('input[type="range"]').forEach(async range => {
     const divisor = range.dataset.divisor
     const output = range.closest('div').querySelector('output')
+    if (range === shortIdleThreshold) {
+      const minimumLong = Math.max(2, Number(settings.naturalBreaksInactivityResetTime) / 60000 + 1)
+      longIdleThreshold.min = String(minimumLong)
+      settings.naturalBreaksLongIdleResetTime = Math.max(
+        Number(settings.naturalBreaksLongIdleResetTime) || 1800000,
+        minimumLong * 60000
+      )
+    }
     range.value = settings[range.name] / divisor
     const unit = output.dataset.unit
     output.innerHTML = await formatRangeOutput(unit, range.value)
@@ -251,6 +287,7 @@ window.onload = async (e) => {
         document.querySelector('#longBreakEvery').closest('div').querySelector('output')
           .innerHTML = await window.i18next.t('utils.minutes', { count: parseInt(realBreakInterval()) })
         window.settings.saveSettings(range.name, range.value * divisor)
+        if (range === shortIdleThreshold) await constrainIdleThresholds(true)
       }
       range.oninput = async event => {
         output.innerHTML = await formatRangeOutput(unit, range.value)

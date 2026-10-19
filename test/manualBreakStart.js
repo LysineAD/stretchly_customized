@@ -190,16 +190,11 @@ describe('manual break start', () => {
     planner.on('startMicrobreakNotification', notify)
     planner.on('startMicrobreak', due)
     planner.nextBreak()
-    if (notification) {
-      vi.advanceTimersByTime(values.microbreakInterval - values.microbreakNotificationInterval)
-      expect(notify).toHaveBeenCalledOnce()
-      expect(due).not.toHaveBeenCalled()
-      planner.nextBreakAfterNotification()
-      vi.advanceTimersByTime(values.microbreakNotificationInterval)
-    } else {
-      vi.advanceTimersByTime(values.microbreakInterval)
-      expect(notify).not.toHaveBeenCalled()
-    }
+    vi.advanceTimersByTime(values.microbreakInterval - values.miniBreakAutoStartDelay)
+    expect(due).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(values.miniBreakAutoStartDelay)
+    if (notification) expect(notify).toHaveBeenCalledWith(false)
+    else expect(notify).not.toHaveBeenCalled()
     expect(due).toHaveBeenCalledOnce()
     planner.clear()
   })

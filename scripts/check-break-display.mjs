@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
+import statisticsFixture from './statistics-fixture.mjs'
 
 const root = resolve(process.argv[2] || '.')
 const appDirectory = join(root, 'app')
@@ -45,6 +46,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('i18next-translate', (_event, key) => key.split('.').reduce((value, part) => value?.[part], translations) || key)
   ipcMain.handle('i18next-dir', () => 'ltr')
   ipcMain.handle('resolve-local-image', () => null)
+  ipcMain.handle('break-statistics-data', () => statisticsFixture())
   for (const type of ['mini', 'long', 'extended']) {
     ipcMain.handle('send-' + type + '-break-data', () => [idea, started, 300000, true, true, 30, '#478484', 0, false])
     ipcMain.on(type + '-break-loaded', event => waiters.get(event.sender.id)?.())

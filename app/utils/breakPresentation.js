@@ -13,7 +13,11 @@ export default async function initializeBreakPresentation () {
     let interactive = false
     if (pointer) {
       const elements = [...document.querySelectorAll(interactiveSelector)]
-      if (compact && content.scrollHeight > content.clientHeight + 1) elements.push(content)
+      const advice = document.querySelector('.break-advice')
+      if (advice && advice.scrollHeight > advice.clientHeight + 1) {
+        const bounds = advice.getBoundingClientRect()
+        if (pointer.x >= bounds.right - 20) elements.push(advice)
+      }
       interactive = elements.some(element => {
         const bounds = element.getBoundingClientRect()
         return bounds.width > 0 && bounds.height > 0 &&

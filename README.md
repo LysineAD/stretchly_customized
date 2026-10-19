@@ -150,7 +150,7 @@ Clicking the *Stretchly* icon in your tray area will display the current status 
 
 <img src="tray.png" height="140">
 
-*Stretchly* monitors idle time when enabled. In Settings, choose an idle threshold (1–60 minutes; default 5) and whether returning from idle resets the schedule or resumes its preserved countdowns and cycle progress.
+*Stretchly* monitors idle time when enabled. Short idle restarts the current Long cycle; longer idle starts a fresh schedule. Both thresholds are adjustable in Settings.
 
 *Stretchly* is also monitoring Do Not Disturb mode, so breaks are paused when DnD mode is On.
 
@@ -170,9 +170,11 @@ Type `stretchly help` to get a list of all commands and options available as wel
 
 This fork includes Extended breaks and is based on Stretchly 1.22.1. Preferences offers Window, Full screen, or **Compact**. Compact uses a fixed **860 × 720 logical-pixel** window centered on each selected monitor, with the original advice typography. Smaller work areas clamp that size. **Allow clicks through break windows** applies to all three display choices; visible controls and links remain clickable.
 
-Enable **Start breaks manually** to show a waiting reminder. **Start break** and the existing **break shortcut** (default **Ctrl+X** on Windows) start the same countdown on all selected monitors. After Start, that same shortcut follows the existing Postpone/Skip rules. Edit or clear it in Preferences; invalid or unavailable combinations leave the previous saved value intact. Three sliders set the maximum wait before auto-start: Mini **20 seconds**, Long **60 seconds**, Extended **120 seconds** by default; **0 waits indefinitely**. The full configured break duration follows Start. Before-break notifications remain independent. Manual start defaults off; mode/wait changes apply to the next reminder.
+Enable **Start breaks manually** to show a preparation reminder before the scheduled deadline. **Start break** and the existing **break shortcut** (default **Ctrl+X** on Windows) start the same full-duration countdown on every selected monitor. The three sliders set preparation lead and Postpone delay: Mini **20 seconds**, Long **60 seconds**, Extended **120 seconds** by default. The first reminder auto-starts at the original deadline; **every return after Postpone requires Start**, with no further auto-start for that break. Zero waits indefinitely and retains the old Postpone delay. Before-break notification switches and lead times remain independent.
 
-Use the existing **Monitor system idle time** checkbox to enable idle handling. The new **Handle idle time after** slider sets the threshold, from **1 to 60 minutes** (default **5**). **Reset the break schedule after idle time** is checked by default to retain existing behavior. Uncheck it to preserve countdowns from the beginning of the qualifying idle period and progress toward Extended breaks. For example, one completed Long break still counts after you return; only the remaining Long breaks are needed before Extended. Ongoing displayed breaks keep their existing duration and controls. Turning off idle monitoring resumes an idle-paused schedule.
+Use **Monitor system idle time** with two sliders. **Short idle** (1–60 minutes, default 5) restarts the current Long cycle while retaining its upcoming Long/Extended break. With Mini every 20 minutes and Long every 40, returning starts Mini → the same Long/Extended again. **Long idle** (2–180 minutes, default 30, always longer than Short) starts a fresh schedule. Both wait for activity before counting again.
+
+Every break window shows current extra postpones and work stretch, Today/Last 7 days statistics, and quiet lifetime totals. The first preparation Postpone taken before the original deadline is normal and adds **zero extra postpones**. Starting within one minute of the original deadline still counts as without delay. See [statistics definitions](STATISTICS.md). Compact retains the original advice fonts, with a separate scroll area for longer advice and all statistics visible.
 
 Strict mode hides on-window Skip. The tray always remains available for intentional **Skip current break**, Pause, Preferences and Quit. Preferences uses scrolling and two columns, switching to one column on narrow windows.
 
@@ -294,7 +296,7 @@ E.g. if you live in Boston you would set:
 `posLongitude: 71`
 
 #### Editing postpone functionality [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-Use Schedule to enable postponement and set its delay for each break type. Advanced values `microbreakPostponeTime`, `breakPostponeTime` and `extendedBreakPostponeTime` use milliseconds. Legacy `*PostponesLimit` values are ignored in this build. The `*PostponableDurationPercent` values retain their original effect on when non-strict Skip appears; they no longer hide Postpone.
+Use Schedule to enable postponement. The three preparation / Postpone sliders in Settings set its per-type delay as well as the first reminder's lead. Positive `miniBreakAutoStartDelay`, `longBreakAutoStartDelay` and `extendedBreakAutoStartDelay` values take precedence over legacy `microbreakPostponeTime`, `breakPostponeTime` and `extendedBreakPostponeTime` values, all in milliseconds. Legacy `*PostponesLimit` values are ignored. The `*PostponableDurationPercent` values retain their original effect on non-strict Skip; they no longer hide Postpone.
 
 #### New version notification [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, set `notifyNewVersion: false,` to disable new version notification.
@@ -309,9 +311,9 @@ To play different sound for Mini breaks, set `miniBreakAudio` to desired value (
 To have different theme for Mini breaks, set `miniBreakColor` to desired value, ie `#123456`.
 
 #### Natural breaks inactivity time [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-Main Settings exposes the threshold with a 1–60 minute slider and three idle modes: **No reset** restores the countdown from idle onset; **Partial reset** restarts the current work interval, keeping the same next break and Extended-cycle progress; **Complete reset** starts a fresh schedule. Timers resume when activity returns. Saved `naturalBreaksIdleMode` values are `preserve`, `partial`, and `reset`. Until a mode is selected, the previous `naturalBreaksResetOnIdle` boolean still determines behavior (false preserves; true resets).
+Main Settings exposes Short idle (1–60 minutes) and Long idle (2–180 minutes, greater than Short). Short restarts the whole current Long cycle without losing its upcoming Long/Extended ordinal; Long resets the entire schedule. Countdown resumes on activity. The previous `naturalBreaksIdleMode` and `naturalBreaksResetOnIdle` settings are obsolete.
 
-In the preferences file, set `naturalBreaksInactivityResetTime` to your preferred value (in milliseconds greater than than 20000ms). This is an idle time length, after which *Stretchly* breaks will be paused until the user resumes activity.
+The corresponding settings are `naturalBreaksInactivityResetTime` (default `300000`) and `naturalBreaksLongIdleResetTime` (default `1800000`), in milliseconds.
 
 You can also set `naturalBreaksCheckInterval` in milliseconds: how often idle time is checked. A higher number means lower CPU and energy usage, but slightly less responsive detection. Default value is `2000` which is 2 seconds.
 

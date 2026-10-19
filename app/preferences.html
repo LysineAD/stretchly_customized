@@ -104,21 +104,14 @@
         </div>
         <fieldset id="idleControls">
           <div>
-            <label data-i18next="preferences.settings.idleThreshold" for="idleThreshold"></label>
+            <label data-i18next="preferences.settings.idleShortThreshold" for="idleThreshold"></label>
             <input type="range" min="1" max="60" step="1" name="naturalBreaksInactivityResetTime" data-divisor="60000" id="idleThreshold">
             <output data-unit="minutes"></output>
           </div>
           <div>
-            <input type="radio" name="naturalBreaksIdleMode" value="preserve" id="idlePreserve">
-            <label data-i18next="preferences.settings.idlePreserve" for="idlePreserve"></label>
-          </div>
-          <div>
-            <input type="radio" name="naturalBreaksIdleMode" value="partial" id="idlePartial">
-            <label data-i18next="preferences.settings.idlePartial" for="idlePartial"></label>
-          </div>
-          <div>
-            <input type="radio" name="naturalBreaksIdleMode" value="reset" id="idleReset">
-            <label data-i18next="preferences.settings.idleReset" for="idleReset"></label>
+            <label data-i18next="preferences.settings.idleLongThreshold" for="idleLongThreshold"></label>
+            <input type="range" min="2" max="180" step="1" name="naturalBreaksLongIdleResetTime" data-divisor="60000" id="idleLongThreshold">
+            <output data-unit="minutes"></output>
           </div>
           <p data-i18next="preferences.settings.idleHelp"></p>
         </fieldset>
@@ -250,11 +243,6 @@
           <input type="checkbox" value="microbreakPostpone" id="enablePostponeMini">
           <label data-i18next="preferences.schedule.enablePostponeMini" for="enablePostponeMini"></label>
         </div>
-        <div>
-          <label data-i18next="preferences.schedule.postponeFor" for="postponeMiniFor"></label>
-          <input type="range" min="1" max="30" step="1" name="microbreakPostponeTime" data-divisor="60000" id="postponeMiniFor">
-          <output data-unit="minutes"></output>
-        </div>
       </section>
       <section class="preference-card">
         <h2 data-i18next="preferences.schedule.longBreaks"></h2>
@@ -297,11 +285,6 @@
         <div>
           <input type="checkbox" value="breakPostpone" id="enablePostponeLong">
           <label data-i18next="preferences.schedule.enablePostponeLong" for="enablePostponeLong"></label>
-        </div>
-        <div>
-          <label data-i18next="preferences.schedule.postponeFor" for="postponeLongFor"></label>
-          <input type="range" min="1" max="30" step="1" name="breakPostponeTime" data-divisor="60000" id="postponeLongFor">
-          <output data-unit="minutes"></output>
         </div>
       </section>
       <section class="preference-card">
@@ -348,11 +331,6 @@
         <div>
           <input type="checkbox" value="extendedBreakPostpone" id="enablePostponeExtended">
           <label data-i18next="preferences.schedule.enablePostponeExtended" for="enablePostponeExtended"></label>
-        </div>
-        <div>
-          <label data-i18next="preferences.schedule.postponeFor" for="postponeExtendedFor"></label>
-          <input type="range" min="1" max="30" step="1" name="extendedBreakPostponeTime" data-divisor="60000" id="postponeExtendedFor">
-          <output data-unit="minutes"></output>
         </div>
       </section>
       <section class="preference-card" data-strict-mode="">

@@ -84,7 +84,7 @@ for (const type of ['mini', 'long', 'extended']) {
     extendedBreak: type === 'extended',
     extendedBreakInterval: 1,
     breakInterval: 0,
-    microbreakInterval: type === 'extended' ? 1500 : 300000,
+    microbreakInterval: type === 'extended' ? (autoStartCheck ? 12000 : 1500) : 300000,
     microbreakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,
     breakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,
     extendedBreakDuration: (strictQuitCheck || postponeCheck) ? 30000 : 3000,

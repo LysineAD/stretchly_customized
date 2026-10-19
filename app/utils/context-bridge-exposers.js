@@ -29,6 +29,7 @@ function exposeI18next () {
 function exposeBreaks (type) {
   contextBridge.exposeInMainWorld('breaks', {
     sendBreakData: () => ipcRenderer.invoke(`send-${type}-break-data`),
+    statistics: () => ipcRenderer.invoke('break-statistics-data'),
     finishBreak: (manualAwaiting) => ipcRenderer.send(`finish-${type}-break`, false, manualAwaiting),
     postponeBreak: () => ipcRenderer.send(`postpone-${type}-break`),
     startBreak: () => ipcRenderer.invoke('start-visible-break', type),

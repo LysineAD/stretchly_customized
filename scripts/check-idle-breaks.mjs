@@ -13,7 +13,11 @@ writeFileSync(join(profile, 'Data/config.json'), JSON.stringify({
   notifyNewVersion: false,
   naturalBreaks: false,
   monitorDnd: false,
-  microbreakInterval: 3600000
+  microbreakInterval: 60000,
+  breakInterval: 1,
+  extendedBreakInterval: 3,
+  naturalBreaksInactivityResetTime: 60000,
+  naturalBreaksLongIdleResetTime: 120000
 }))
 const server = createServer()
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -63,60 +67,51 @@ try {
       const { join } = process.getBuiltinModule('path')
       const { default: BreaksPlanner } = require(join(app.getAppPath(), 'app/breaksPlanner.js'))
       const { default: defaults } = require(join(app.getAppPath(), 'app/utils/defaultSettings.js'))
-      const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
       const reports = []
-      for (const mode of ['preserve', 'partial', 'reset']) {
-        for (const type of ['mini', 'long', 'extended']) {
-          const values = {
-            ...defaults, naturalBreaks: true, monitorDnd: false,
-            naturalBreaksCheckInterval: 20, naturalBreaksInactivityResetTime: 60000,
-            naturalBreaksIdleMode: mode,
-            microbreakInterval: 600000, breakInterval: 1, extendedBreakInterval: 3
-          }
-          const planner = new BreaksPlanner({ get: key => values[key] })
-          let idleTime = 0
-          Object.defineProperty(planner.naturalBreaksManager, 'idleTime', { get: () => idleTime })
-          try {
-            planner.breakNumber = type === 'mini' ? 0 : 1
-            planner.longBreakNumber = type === 'extended' ? 2 : 1
-            planner.nextBreak()
-            planner.scheduler.now -= 180000
-            const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
-            const reference = planner.scheduler.reference
-            idleTime = 60000
-            await wait(90)
-            const pausedRemaining = planner.timeToNextBreak
-            if (mode === 'reset') {
-              if (planner.scheduler.reference !== null || planner.longBreakNumber !== 0) throw Error('Reset mode must reset progress')
-            } else {
-              if (planner.idlePausedScheduler !== planner.scheduler || planner.scheduler.timer !== null) throw Error(type + ': scheduler not paused')
-              if (Math.abs(pausedRemaining - (mode === 'partial' ? 600000 : 480000)) > 250) throw Error(type + ': idle-onset countdown not restored: ' + pausedRemaining)
-              if (JSON.stringify(counts) !== JSON.stringify([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber])) throw Error(type + ': cycle progress lost')
-              await wait(80)
-              if (planner.timeToNextBreak !== pausedRemaining) throw Error(type + ': paused timer continued counting')
-            }
-            idleTime = 0
-            await wait(90)
-            if (planner.scheduler.timer === null) throw Error(type + ': timer failed to resume')
-            if (mode !== 'reset' && (planner.scheduler.reference !== reference || Math.abs(planner.timeToNextBreak - pausedRemaining) > 250)) throw Error(type + ': resumed wrong countdown')
-            reports.push({ type, mode, reference, counts, pausedRemaining, resumedRemaining: planner.timeToNextBreak, cyclePreserved: mode !== 'reset' })
-          } finally {
-            planner.naturalBreaksManager.stop()
-            planner.dndManager.stop()
-            planner.appExclusionsManager.stop()
-            planner.scheduler.cancel()
-          }
+      const makePlanner = () => {
+        const values = {
+          ...defaults, naturalBreaks: false, monitorDnd: false,
+          microbreakInterval: 60000, breakInterval: 1, extendedBreakInterval: 3,
+          naturalBreaksInactivityResetTime: 60000, naturalBreaksLongIdleResetTime: 120000
         }
+        return { planner: new BreaksPlanner({ get: key => values[key] }), values }
       }
+      const dispose = planner => {
+        planner.naturalBreaksManager.stop()
+        planner.dndManager.stop()
+        planner.appExclusionsManager.stop()
+        planner.scheduler?.cancel()
+      }
+      try {
+        for (const stage of ['first-mini', 'next-long', 'next-extended']) {
+          const { planner } = makePlanner()
+          if (stage === 'next-long') planner.breakNumber = 1
+          if (stage === 'next-extended') { planner.breakNumber = 1; planner.longBreakNumber = 2 }
+          planner.nextBreak()
+          const ordinal = planner.longBreakNumber + (planner._scheduledBreakType === 'microbreak' ? 1 : 0)
+          planner.naturalBreaksManager.emit('idleShortThresholdReached', 60000)
+          if (planner.scheduler.timer !== null) throw Error(stage + ': short recovery countdown must be paused')
+          if (planner._scheduledBreakType !== 'microbreak' && planner.settings.get('microbreak')) throw Error(stage + ': short recovery did not return to first Mini')
+          const afterShort = [planner.breakNumber, planner.longBreakNumber]
+          planner.naturalBreaksManager.emit('idleShortThresholdReached', 62000)
+          if (JSON.stringify(afterShort) !== JSON.stringify([planner.breakNumber, planner.longBreakNumber])) throw Error(stage + ': repeated short threshold changed cycle ordinal')
+          if (stage !== 'first-mini') {
+            planner.naturalBreaksManager.emit('idleLongThresholdReached', 120000)
+            if (planner.breakNumber !== 1 || planner.longBreakNumber !== 0) throw Error(stage + ': long threshold did not reset the full cycle')
+          }
+          planner.naturalBreaksManager.emit('idlePeriodFinished', 120000)
+          if (planner.scheduler.timer === null) throw Error(stage + ': schedule failed to resume on activity')
+          reports.push({ stage, ordinal, afterShort, resumed: planner.scheduler.reference })
+          dispose(planner)
+        }
+      } finally {}
       return reports
     })()`
   })
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
-  assert.equal(result.result.value.length, 9)
-  writeFileSync(join(profile, 'results.json'), JSON.stringify({
-    app: folder, idleInput: 'simulated in isolated packaged planners', reports: result.result.value
-  }, null, 2))
-  console.log('Packaged idle-onset countdown, Mini/Long/Extended preserve, partial-reset and complete-reset checks passed.')
+  assert.equal(result.result.value.length, 3)
+  writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
+  console.log('Packaged two-tier idle cycle recovery and full-reset checks passed.')
 } finally {
   socket?.close()
   child.kill()

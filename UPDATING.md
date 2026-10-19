@@ -30,6 +30,7 @@ Use the Node/npm versions compatible with the selected upstream release; this re
 npm ci
 npm run lint
 npm test -- --coverage.enabled=false
+node --test scripts/check-statistics.mjs
 npm run pack -- --win --x64
 ```
 
@@ -40,6 +41,7 @@ Use these project scripts from the source root. Place the package path before fl
 ```powershell
 node scripts/check-packaged-start.mjs dist/win-unpacked
 node scripts/check-idle-breaks.mjs dist/win-unpacked
+node scripts/check-preparation-statistics.mjs dist/win-unpacked
 node scripts/check-manual-start.mjs dist/win-unpacked
 node scripts/check-manual-start.mjs dist/win-unpacked --readiness
 node scripts/check-manual-start.mjs dist/win-unpacked --auto-start
@@ -53,12 +55,13 @@ These use isolated profiles under `.scratch`; they do not overwrite the user's s
 
 Completion checks:
 
-- Fixed Compact bounds on both monitors before/after Start; all bundled advice fits without reducing fonts.
-- Button, native shared shortcut and each auto-start delay start all selected monitors together.
+- Fixed Compact bounds on both monitors before/after Start; original advice fonts retained, long advice scrolls, and every statistics row and control remains visible with clock on/off.
+- Button/native shared shortcut start all selected monitors together. First preparation auto-start lands at the original deadline; any Postpone cancels that auto-start for the remainder of the break episode.
 - Waiting leaves progress full; after Start the full duration runs; the same shortcut then postpones whenever enabled; strict mode continues to hide on-window Skip.
 - Existing Window/Full screen, click-through controls and notification behavior pass.
 - Strict mode hides on-window Skip but tray Skip/Pause/Preferences/Quit stay available.
-- The existing idle toggle enables/disables the new threshold and reset controls. Check all three idle modes, including partial reset retaining the next break/cycle while restarting the work interval. Complete reset retains old behavior; preserve mode resumes the idle-onset countdown without losing Mini/Long/Extended cycle or Postpone counts. Check notification-stage transitions, disabling monitoring while idle, and intentional tray Pause.
+- The existing idle toggle enables/disables both thresholds. Check first/second-half Long-cycle recovery, retaining an upcoming Extended after repeated short idle, escalation to full reset, recovery after a running break, disabling monitoring, notification timing and intentional tray Pause.
+- First preparation Postpone records zero extra/skip/unfinished, and a Start within the one-minute tolerance counts without delay. Later Postpone clicks add one extra each. Verify all break types, daily/weekly boundaries, storage restore and timer/idle time without overlap.
 - All Preferences controls save, and the last Schedule control is reachable by scrolling.
 
 Run `node scripts/check-manual-start.mjs dist/win-unpacked --postpone` for three repeated button/shortcut postponements per break type. See `CUSTOM_CODE_AUDIT.md` for the custom-only audit scope and findings.
@@ -69,6 +72,6 @@ Update the inventory, README and CHANGELOG for any changed feature or new upstre
 
 Quit the user's current app through its tray before replacing binaries. Back up its settings and any local `Data` directory when needed. Preserve `Data`; never delete the user's profile. Confirm the resolved destination is exactly `D:\Projects\Stretchly_Customized`, then copy the **contents** of `dist\win-unpacked` into that folder, replacing previous application files. Do not move/delete anything else in `D:\Projects`.
 
-Verify delivered file counts/sizes and SHA-256 hashes of `Stretchly Customized.exe` and `resources\app.asar` against the built output. Confirm packaged app text matches the pushed source. Copy `CUSTOMIZATIONS.md` and `UPDATING.md` beside the executable, and write a local `BUILD_INFO.json` with the source commit, build date and executable/asar hashes. Run the startup/preferences smoke check against the delivered folder using its isolated profile. Launch the delivered executable normally only when the user wants the real app started.
+Verify delivered file counts/sizes and SHA-256 hashes of `Stretchly Customized.exe` and `resources\app.asar` against the built output. Confirm packaged app text matches the pushed source. Copy `CUSTOMIZATIONS.md`, `STATISTICS.md` and `UPDATING.md` beside the executable, and write a local `BUILD_INFO.json` with the source commit, build date and executable/asar hashes. Run the startup/preferences smoke check against the delivered folder using its isolated profile. Launch the delivered executable normally only when the user wants the real app started.
 
 Deliver the executable link, source repo link, and these two short guides. Keep the same app name/folder for routine updates.

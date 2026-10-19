@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { EventEmitter } from 'node:events'
 import BreaksPlanner from '../app/breaksPlanner.js'
 import defaultSettings from '../app/utils/defaultSettings.js'
-import { getIdleMode } from '../app/utils/idleMode.js'
-import StatusMessages from '../app/utils/statusMessages.js'
+import { getIdleThresholds } from '../app/utils/idleThresholds.js'
 
 const idle = vi.hoisted(() => ({ started: null }))
 vi.mock('electron', () => ({
@@ -22,8 +20,8 @@ vi.mock('../app/utils/appExclusionsManager.js', async () => {
   return { default: class extends EventEmitter { reset () {} stop () {} reinitialize () {} } }
 })
 
-describe('configurable idle breaks', () => {
-  let planner, settings, values
+describe('two-tier idle recovery', () => {
+  let planner, values
 
   beforeEach(() => {
     vi.useFakeTimers()
@@ -31,331 +29,217 @@ describe('configurable idle breaks', () => {
     idle.started = null
     values = {
       ...defaultSettings,
-      naturalBreaksResetOnIdle: false,
+      naturalBreaksCheckInterval: 2000,
       naturalBreaksInactivityResetTime: 60000,
-      microbreakInterval: 600000,
+      naturalBreaksLongIdleResetTime: 120000,
+      microbreakInterval: 60000,
       breakInterval: 1,
-      extendedBreakInterval: 3
+      extendedBreakInterval: 3,
+      microbreakNotificationInterval: 10000,
+      breakNotificationInterval: 10000,
+      extendedBreakNotificationInterval: 10000
     }
-    settings = { get: key => values[key] }
-    planner = new BreaksPlanner(settings)
+    planner = new BreaksPlanner({ get: key => values[key] })
   })
 
   afterEach(() => {
     planner.naturalBreaksManager.stop()
+    planner.dndManager.stop()
+    planner.appExclusionsManager.stop()
     planner.scheduler?.cancel()
     vi.useRealTimers()
   })
+
+  const beginIdle = () => {
+    idle.started = Date.now()
+    vi.advanceTimersByTime(60000)
+  }
+
+  const stayIdleToLongThreshold = () => vi.advanceTimersByTime(60000)
 
   const returnToWork = () => {
     idle.started = null
     vi.advanceTimersByTime(2000)
   }
 
-  it.each([
-    ['Mini', 0, 0, 'startMicrobreakNotification'],
-    ['Long', 1, 0, 'startBreakNotification'],
-    ['Extended', 1, 2, 'startExtendedBreakNotification']
-  ])('preserves the full %s session position and idle-onset countdown', (_type, breakNumber, longBreakNumber, reference) => {
-    planner.breakNumber = breakNumber
-    planner.longBreakNumber = longBreakNumber
-    planner.nextBreak()
-    vi.advanceTimersByTime(120000)
-    const atIdleStart = planner.timeToNextBreak
-    const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
-    const scheduler = planner.scheduler
-    const callback = vi.fn()
-    planner.on(reference, callback)
-    idle.started = Date.now()
-    vi.advanceTimersByTime(59999)
-    expect(planner.idlePausedScheduler).toBeNull()
-    vi.advanceTimersByTime(1)
-    expect(planner.idlePausedScheduler).toBe(scheduler)
-    expect(planner.scheduler.reference).toBe(reference)
-    expect(planner.timeToNextBreak).toBe(atIdleStart)
-    vi.advanceTimersByTime(3600000)
-    expect(planner.timeToNextBreak).toBe(atIdleStart)
-    expect(callback).not.toHaveBeenCalled()
-    expect([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]).toEqual(counts)
-    returnToWork()
-    expect(planner.scheduler).toBe(scheduler)
-    expect(planner.timeToNextBreak).toBe(atIdleStart)
-    expect(planner.idlePausedScheduler).toBeNull()
-    const remainingToNotification = planner.scheduler.timeLeft
-    vi.advanceTimersByTime(remainingToNotification - 1)
-    expect(callback).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(callback).toHaveBeenCalledOnce()
+  it('uses bounded thresholds and keeps the long threshold above the short threshold', () => {
+    expect(getIdleThresholds({})).toEqual({ short: 300000, long: 1800000 })
+    expect(getIdleThresholds({ naturalBreaksInactivityResetTime: 3600000, naturalBreaksLongIdleResetTime: 120000 })).toEqual({ short: 3600000, long: 3660000 })
+    expect(getIdleThresholds({ naturalBreaksInactivityResetTime: 0, naturalBreaksLongIdleResetTime: 999999999 })).toEqual({ short: 60000, long: 10800000 })
+    expect(defaultSettings.naturalBreaksLongIdleResetTime).toBe(1800000)
   })
 
-  it.each([
-    ['Mini', 0, 0, 'startMicrobreakNotification'],
-    ['Long', 1, 0, 'startBreakNotification'],
-    ['Extended', 1, 2, 'startExtendedBreakNotification']
-  ])('partially resets the %s interval without advancing cycle progress', (_type, breakNumber, longBreakNumber, reference) => {
-    values.naturalBreaksIdleMode = 'partial'
-    planner.breakNumber = breakNumber
-    planner.longBreakNumber = longBreakNumber
-    planner.nextBreak()
-    planner.postponesNumber = 4
-    const counts = [planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]
-    vi.advanceTimersByTime(120000)
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    expect(planner.scheduler.reference).toBe(reference)
-    expect(planner.timeToNextBreak).toBe(600000)
-    vi.advanceTimersByTime(3600000)
-    expect(planner.timeToNextBreak).toBe(600000)
-    returnToWork()
-    expect(planner.timeToNextBreak).toBe(600000)
-    expect([planner.breakNumber, planner.longBreakNumber, planner.postponesNumber]).toEqual(counts)
-    vi.advanceTimersByTime(10000)
-    expect(planner.timeToNextBreak).toBe(590000)
-  })
-
-  it('partially resets a long-only interval to its full configured length', () => {
-    values.naturalBreaksIdleMode = 'partial'
-    values.microbreak = false
-    planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    returnToWork()
-    expect(planner.timeToNextBreak).toBe(1200000)
-    expect(planner.longBreakNumber).toBe(1)
-  })
-
-  it.each(['microbreak', 'break', 'extendedBreak'])('repeatedly postpones the displayed %s without changing cycle progress', type => {
-    planner.nextBreak()
-    const event = type.charAt(0).toUpperCase() + type.slice(1)
-    const counts = [planner.breakNumber, planner.longBreakNumber]
-    values[type + 'PostponeTime'] = 60000
-    for (let index = 1; index <= 5; index++) {
-      planner.scheduler.cancel()
-      planner.emit(type + 'Started', false)
-      vi.advanceTimersByTime(values[type + 'Duration'] * 0.8)
-      planner.postponeCurrentBreak()
-      expect(planner.scheduler.reference).toBe('start' + event + 'Notification')
-      expect(planner.timeToNextBreak).toBe(60000)
-      expect(planner.postponesNumber).toBe(index)
-      expect([planner.breakNumber, planner.longBreakNumber]).toEqual(counts)
-    }
-  })
-
-  it('preserves old idle preferences until a new mode is explicitly selected', () => {
-    expect(getIdleMode({})).toBe('reset')
-    expect(getIdleMode({ naturalBreaksResetOnIdle: false })).toBe('preserve')
-    expect(getIdleMode({ naturalBreaksResetOnIdle: true })).toBe('reset')
-    expect(getIdleMode({ naturalBreaksResetOnIdle: false, naturalBreaksIdleMode: 'partial' })).toBe('partial')
-    expect(getIdleMode({ naturalBreaksResetOnIdle: false, naturalBreaksIdleMode: 'reset' })).toBe('reset')
-  })
-
-  it('partially resets after a notification without losing the next break type', () => {
-    values.naturalBreaksIdleMode = 'partial'
-    values.breakNotificationInterval = 120000
-    planner.breakNumber = 1
-    planner.on('startBreakNotification', () => planner.nextBreakAfterNotification())
-    planner.nextBreak()
-    vi.advanceTimersByTime(480000)
-    expect(planner.scheduler.reference).toBe('startBreak')
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    returnToWork()
-    expect(planner.scheduler.reference).toBe('startBreakNotification')
-    expect(planner.timeToNextBreak).toBe(600000)
-    expect(planner.longBreakNumber).toBe(1)
-  })
-
-  it('does not freeze or rewind the schedule for idle periods below the selected threshold', () => {
-    planner.nextBreak()
-    const remaining = planner.timeToNextBreak
-    idle.started = Date.now()
-    vi.advanceTimersByTime(30000)
-    returnToWork()
-    expect(planner.idlePausedScheduler).toBeNull()
-    expect(planner.timeToNextBreak).toBe(remaining - 32000)
-    expect(planner.breakNumber).toBe(1)
-  })
-
-  it('uses the configured threshold and does not resume when it changes during a paused idle period', () => {
-    values.naturalBreaksInactivityResetTime = 120000
-    planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    expect(planner.idlePausedScheduler).toBeNull()
-    vi.advanceTimersByTime(60000)
-    expect(planner.idlePausedScheduler).toBe(planner.scheduler)
-    const remaining = planner.timeToNextBreak
-    values.naturalBreaksInactivityResetTime = 300000
-    vi.advanceTimersByTime(60000)
-    expect(planner.timeToNextBreak).toBe(remaining)
-    returnToWork()
-    expect(planner.idlePausedScheduler).toBeNull()
-    expect(planner.scheduler.timer).not.toBeNull()
-  })
-
-  it('retains reset behavior by default, resetting Mini/Long/Extended progress when activity returns', () => {
-    values.naturalBreaksResetOnIdle = defaultSettings.naturalBreaksResetOnIdle
-    expect(values.naturalBreaksResetOnIdle).toBe(true)
-    planner.breakNumber = 4
+  it('restarts the whole current Long cycle from its first Mini after first-half idle', () => {
+    const started = vi.fn()
+    planner.on('idleRecoveryStarted', started)
+    planner.breakNumber = 0
     planner.longBreakNumber = 2
     planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    expect(planner.scheduler.reference).toBeNull()
-    expect(planner.longBreakNumber).toBe(0)
+    expect(planner._scheduledBreakType).toBe('microbreak')
+    beginIdle()
+    expect(started).toHaveBeenCalledWith({ idleTime: 60000, fullReset: false })
+    expect(planner.breakNumber).toBe(1)
+    expect(planner.longBreakNumber).toBe(2)
+    expect(planner.scheduler.reference).toBe('startMicrobreakNotification')
+    expect(planner.scheduler.timer).toBeNull()
+    const counts = [planner.breakNumber, planner.longBreakNumber]
+    vi.advanceTimersByTime(10000)
+    expect([planner.breakNumber, planner.longBreakNumber]).toEqual(counts)
     returnToWork()
     expect(planner.scheduler.timer).not.toBeNull()
-    expect(planner.breakNumber).toBe(1)
-    expect(planner.longBreakNumber).toBe(0)
+    expect(planner.timeToNextBreak).toBe(60000)
   })
 
-  it('reaches Extended after the remaining Long break instead of restarting the cycle', () => {
-    planner.longBreakNumber = 1
-    planner.breakNumber = 2
+  it.each([
+    ['Long', 0, 'break'],
+    ['Extended', 2, 'extendedBreak']
+  ])('returns from the latter half before the next %s while preserving its ordinal', (_name, priorLongs, expectedType) => {
+    planner.breakNumber = 1
+    planner.longBreakNumber = priorLongs
     planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
+    expect(planner._scheduledBreakType).toBe(expectedType)
+    const scheduledOrdinal = planner.longBreakNumber
+    beginIdle()
+    expect(planner._scheduledBreakType).toBe('microbreak')
+    expect(planner.longBreakNumber).toBe(scheduledOrdinal - 1)
     returnToWork()
-    expect(planner.longBreakNumber).toBe(1)
+    planner.scheduler.cancel()
     planner.nextBreak()
-    expect(planner._scheduledBreakType).toBe('break')
-    expect(planner.longBreakNumber).toBe(2)
-    planner.nextBreak()
+    expect(planner.longBreakNumber).toBe(scheduledOrdinal)
+    expect(planner._scheduledBreakType).toBe(expectedType)
+  })
+
+  it('does not move the same upcoming Extended ordinal after repeated idle periods', () => {
+    planner.breakNumber = 1
+    planner.longBreakNumber = 2
     planner.nextBreak()
     expect(planner._scheduledBreakType).toBe('extendedBreak')
-    expect(planner.longBreakNumber).toBe(3)
-  })
-
-  it('preserves notification-stage and postponement countdowns and counts', () => {
-    values.microbreakNotificationInterval = 120000
+    beginIdle()
+    expect(planner._scheduledBreakType).toBe('microbreak')
+    returnToWork()
+    planner.scheduler.cancel()
     planner.nextBreak()
-    planner.nextBreakAfterNotification()
-    planner.postponesNumber = 2
+    expect(planner._scheduledBreakType).toBe('extendedBreak')
+    const ordinal = planner.longBreakNumber
     idle.started = Date.now()
     vi.advanceTimersByTime(60000)
-    expect(planner.scheduler.reference).toBe('startMicrobreak')
-    expect(planner.postponesNumber).toBe(2)
+    expect(planner._scheduledBreakType).toBe('microbreak')
+    expect(planner.longBreakNumber).toBe(ordinal - 1)
     returnToWork()
-    expect(planner.scheduler.reference).toBe('startMicrobreak')
-    expect(planner.postponesNumber).toBe(2)
+    planner.scheduler.cancel()
+    planner.nextBreak()
+    expect(planner.longBreakNumber).toBe(ordinal)
+    expect(planner._scheduledBreakType).toBe('extendedBreak')
   })
 
-  it('preserves the idle-onset countdown even if the notification fires before the threshold', () => {
-    values.microbreakNotificationInterval = 120000
-    planner.nextBreak()
-    planner.on('startMicrobreakNotification', () => planner.nextBreakAfterNotification())
+  it('escalates within the same idle period to a full schedule reset and stays paused', () => {
     const started = vi.fn()
-    planner.on('startMicrobreak', started)
-    vi.advanceTimersByTime(450000)
-    const remaining = planner.timeToNextBreak
-    expect(remaining).toBe(150000)
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    expect(planner.scheduler.reference).toBe('startMicrobreak')
-    expect(planner.timeToNextBreak).toBe(remaining)
-    returnToWork()
-    vi.advanceTimersByTime(remaining - 1)
-    expect(started).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
-    expect(started).toHaveBeenCalledOnce()
-  })
-
-  it('keeps the postponed countdown and postpone count across idle', () => {
+    const escalated = vi.fn()
+    const finished = vi.fn()
+    planner.on('idleRecoveryStarted', started)
+    planner.on('idleRecoveryEscalated', escalated)
+    planner.on('idleRecoveryFinished', finished)
+    planner.breakNumber = 2
+    planner.longBreakNumber = 2
     planner.nextBreak()
-    planner.postponeCurrentBreak()
-    vi.advanceTimersByTime(30000)
-    const remaining = planner.timeToNextBreak
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
+    beginIdle()
+    expect(planner.scheduler.timer).toBeNull()
+    stayIdleToLongThreshold()
+    expect(started).toHaveBeenCalledOnce()
+    expect(escalated).toHaveBeenCalledOnce()
+    expect(planner.breakNumber).toBe(1)
+    expect(planner.longBreakNumber).toBe(0)
+    expect(planner.scheduler.timer).toBeNull()
+    expect(finished).not.toHaveBeenCalled()
     returnToWork()
-    expect(planner.timeToNextBreak).toBe(remaining)
-    expect(planner.postponesNumber).toBe(1)
+    expect(finished).toHaveBeenCalledWith({ idleTime: 120000 })
+    expect(planner.scheduler.timer).not.toBeNull()
   })
 
-  it.each(['microbreakStarted', 'breakStarted', 'extendedBreakStarted'])('lets an ongoing %s finish normally without resetting session progress', event => {
+  it('applies short recovery after an active break ends without changing its duration timer', () => {
     planner.nextBreak()
     planner.scheduler.cancel()
-    planner.emit(event, false)
-    const callback = vi.fn()
-    const reference = planner.scheduler.reference
-    const counts = [planner.breakNumber, planner.longBreakNumber]
-    planner.on(reference, callback)
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    expect(planner.idlePausedScheduler).toBeNull()
-    expect([planner.breakNumber, planner.longBreakNumber]).toEqual(counts)
-    returnToWork()
-    expect(planner.scheduler.reference).toBe(reference)
-    expect([planner.breakNumber, planner.longBreakNumber]).toEqual(counts)
-  })
-
-  it('resumes the preserved countdown when idle monitoring is disabled while idle', () => {
+    values.microbreakDuration = 300000
+    planner.emit('microbreakStarted', false)
+    const displayedBreakScheduler = planner.scheduler
+    const duration = displayedBreakScheduler.delay
+    beginIdle()
+    expect(planner.scheduler).toBe(displayedBreakScheduler)
+    expect(planner.scheduler.reference).toBe('finishMicrobreak')
+    expect(planner.scheduler.delay).toBe(duration)
+    expect(planner.idleRecoveryPendingShort).toBe(true)
+    planner.scheduler.cancel()
     planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    const remaining = planner.timeToNextBreak
-    planner.naturalBreaks(false)
-    expect(planner.naturalBreaksManager.usingNaturalBreaks).toBe(false)
-    expect(planner.naturalBreaksManager.isSchedulerCleared).toBe(false)
-    expect(planner.idlePausedScheduler).toBeNull()
-    vi.advanceTimersByTime(5000)
-    expect(planner.timeToNextBreak).toBe(remaining - 5000)
-  })
-
-  it('takes a fresh idle-onset snapshot for a second idle period', () => {
-    planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    returnToWork()
-    vi.advanceTimersByTime(1000)
-    const remaining = planner.timeToNextBreak
-    idle.started = Date.now()
-    vi.advanceTimersByTime(62000)
-    expect(planner.timeToNextBreak).toBe(remaining)
-  })
-
-  it('does not automatically resume an intentional tray pause', () => {
-    planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    planner.pause(1)
-    returnToWork()
-    expect(planner.isPaused).toBe(true)
-    expect(planner.idlePausedScheduler).toBeNull()
-    expect(planner.scheduler.reference).toBeNull()
-  })
-
-  it('does not restart a preserved timer while DND is active', () => {
-    planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    planner.dndManager.isOnDnd = true
-    returnToWork()
+    vi.advanceTimersByTime(2000)
+    expect(planner._scheduledBreakType).toBe('microbreak')
+    expect(planner.idlePausedScheduler).toBe(planner.scheduler)
     expect(planner.scheduler.timer).toBeNull()
-    planner.dndManager.isOnDnd = false
-    planner.dndManager.emit('dndFinished')
-    expect(planner.scheduler.timer).not.toBeNull()
-    expect(planner.idlePausedScheduler).toBeNull()
   })
 
-  it('does not monitor idle time when the existing toggle is off', () => {
+  it('resets to the first Long interval when Mini breaks are disabled', () => {
+    values.microbreak = false
+    planner.longBreakNumber = 1
+    planner.nextBreak()
+    const scheduledType = planner._scheduledBreakType
+    const scheduledOrdinal = planner.longBreakNumber
+    beginIdle()
+    expect(planner.longBreakNumber).toBe(scheduledOrdinal)
+    expect(planner._scheduledBreakType).toBe(scheduledType)
+    expect(planner.scheduler.timer).toBeNull()
+  })
+
+  it('finishes deferred recovery after a running break when monitoring was disabled meanwhile', () => {
+    planner.nextBreak()
+    planner.scheduler.cancel()
+    values.microbreakDuration = 300000
+    planner.emit('microbreakStarted', false)
+    beginIdle()
     planner.naturalBreaks(false)
+    expect(planner.idleRecoveryPendingFinishIdleTime).toBe(60000)
+    planner.scheduler.cancel()
+    planner.nextBreak()
+    expect(planner.idleRecoveryActive).toBe(false)
+    expect(planner.idlePausedScheduler).toBeNull()
+    expect(planner.timeToNextBreak).toBe(60000)
+    expect(planner.scheduler.timer).not.toBeNull()
+  })
+
+  it('restarts Mini-only schedules without requiring a Long break', () => {
+    values.break = false
+    planner.nextBreak()
+    beginIdle()
+    expect(planner.breakNumber).toBe(0)
+    expect(planner.longBreakNumber).toBe(0)
+    expect(planner.scheduler.reference).toBe('startMicrobreakNotification')
+    expect(planner.scheduler.timer).toBeNull()
+  })
+
+  it('leaves the countdown alone when idle monitoring is disabled', () => {
     planner.nextBreak()
     const remaining = planner.timeToNextBreak
+    planner.naturalBreaks(false)
     idle.started = Date.now()
     vi.advanceTimersByTime(120000)
-    expect(planner.idlePausedScheduler).toBeNull()
+    expect(planner.idleRecoveryActive).toBe(false)
     expect(planner.timeToNextBreak).toBe(remaining - 120000)
   })
 
-  it('reports an idle pause in the tray instead of a frozen upcoming-break time', () => {
+  it('does not resume an intentional manual pause when idle ends', () => {
     planner.nextBreak()
-    idle.started = Date.now()
-    vi.advanceTimersByTime(60000)
-    const status = new StatusMessages({
-      breakPlanner: planner, settings, i18next: { t: key => key }, humanizeDuration: () => ''
-    })
-    expect(status.trayMessage).toBe('statusMessages.paused - statusMessages.idleTime')
-    expect(planner.naturalBreaksManager).toBeInstanceOf(EventEmitter)
+    beginIdle()
+    planner.pause(1)
+    returnToWork()
+    expect(planner.isPaused).toBe(true)
+    expect(planner.scheduler.reference).toBeNull()
+  })
+
+  it('preserves the next notification stage when short recovery replans', () => {
+    planner.nextBreak()
+    expect(planner.scheduler.reference).toBe('startMicrobreakNotification')
+    beginIdle()
+    expect(planner.scheduler.reference).toBe('startMicrobreakNotification')
+    expect(planner.timeToNextBreak).toBe(60000)
+    returnToWork()
+    expect(planner.scheduler.reference).toBe('startMicrobreakNotification')
   })
 })

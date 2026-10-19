@@ -65,17 +65,19 @@
       "breakShortcut": "Break shortcut",
       "breakShortcutHelp": "One global shortcut: Start while waiting, then Postpone or Skip during the break. Use an accelerator such as Ctrl+X or Shift+X. Leave empty to disable.",
       "breakShortcutError": "This shortcut could not be registered. Choose another combination; break buttons still work.",
-      "miniAutoStart": "Mini break: auto-start after",
-      "longAutoStart": "Long break: auto-start after",
-      "extendedAutoStart": "Extended break: auto-start after",
-      "autoStartHelp": "These waits apply when Start breaks manually is enabled. Start earlier with the button or break shortcut. Changes apply to the next reminder. Set a slider to 0 to wait until you press Start.",
+      "miniAutoStart": "Mini: preparation / Postpone",
+      "longAutoStart": "Long: preparation / Postpone",
+      "extendedAutoStart": "Extended: preparation / Postpone",
+      "autoStartHelp": "The first reminder appears this early, so automatic Start lands on the scheduled time. Postpone uses the same delay. After any Postpone, Start is always manual. Set 0 to wait for Start without an early reminder.",
       "autoStartOff": "Wait for Start",
       "autoStartSeconds": "{{seconds}} seconds",
       "idleThreshold": "Handle idle time after",
-      "idleHelp": "After the idle threshold, the schedule waits for you to return. Partial reset keeps the same next break and progress toward Extended breaks. No reset restores the countdown from when you became idle. Changes apply to the next qualifying idle period.",
+      "idleHelp": "Short idle restarts the current Long cycle from its first Mini, keeping the same upcoming Long or Extended break. Long idle resets the full schedule. Counting resumes when you return.",
       "idlePreserve": "No reset: preserve the remaining countdown",
       "idlePartial": "Partial reset: restart this interval, keep cycle progress",
-      "idleReset": "Complete reset: start a fresh schedule"
+      "idleReset": "Complete reset: start a fresh schedule",
+      "idleShortThreshold": "Restart Long cycle after idle for",
+      "idleLongThreshold": "Reset full schedule after idle for"
     },
     "schedule": {
       "miniBreaks": "Mini breaks:",
@@ -212,7 +214,7 @@
     "currentTimeInBreaks": "Current time",
     "showCurrentTimeInBreaks": "Show current local time in break window",
     "skipAvailableAfter": "Non-strict Skip available after:",
-    "unlimitedPostponeInfo": "Enabled postponement is unlimited. Set its delay here or in Schedule. The percentage below controls when Skip appears in non-strict mode; Postpone remains available throughout the break."
+    "unlimitedPostponeInfo": "Enabled postponement is unlimited. Set the preparation/Postpone delay in main Settings. The percentage below controls when Skip appears in non-strict mode; Postpone remains available throughout the break."
   },
   "utils": {
     "remaining": "{{count}} remaining",

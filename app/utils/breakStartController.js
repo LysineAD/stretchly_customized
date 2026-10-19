@@ -3,9 +3,9 @@ export default class BreakStartController {
     this.session = null
   }
 
-  wait (type, windows, onStart, delay = 0) {
+  wait (type, windows, onStart, delay = 0, deadline = null) {
     this.clear()
-    this.session = { type, windows, onStart, started: null, deadline: null, delay, timer: null, armed: false }
+    this.session = { type, windows, onStart, started: null, deadline: delay > 0 ? deadline : null, delay, timer: null, armed: false }
     return this.session
   }
 
@@ -14,10 +14,10 @@ export default class BreakStartController {
     if (!session || session.armed || session.started !== null) return
     session.armed = true
     if (session.delay > 0) {
-      session.deadline = Date.now() + session.delay
+      session.deadline ??= Date.now() + session.delay
       session.timer = setTimeout(() => {
         if (this.session === session) this.start()
-      }, session.delay)
+      }, Math.max(0, session.deadline - Date.now()))
     }
     for (const window of session.windows) {
       if (!window.isDestroyed()) window.webContents.send('break-start-deadline', session.deadline)
