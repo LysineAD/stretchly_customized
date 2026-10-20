@@ -31,3 +31,7 @@ Scope: early preparation, two-stage idle recovery, statistics and their interact
 - Remove obsolete idle-mode logic and duplicate Postpone sliders. Keep advice typography; separate its scroll area from the always-visible statistics and controls.
 
 Automated coverage includes all three early leads, fixed deadlines despite late renderer readiness, repeated manual-only returns, independent notifications, idle-cycle ordinal preservation/escalation/deferred recovery, first-Postpone classification, timer/idle overlap, midnight/week boundaries, retention, backup recovery and Quit flushing. Packaged Windows results and layout screenshots remain a required delivery gate; record actual results in `BUILD_INFO.json`, without presenting model tests as native verification.
+
+## Simplification — 2026-10-20
+
+Removed the previous headline/status/footer and redundant metrics rather than hiding them. Advice again uses the full main width, with only four statistics rows and a Postpone badge. Auto-start is armed after each postponed return with a fresh wait, while the original first-reminder deadline remains fixed. Statistics now retain seven dates, discard lifetime/unused metrics, migrate old daily counters and rewrite the recovery backup from the pruned summary. Tests cover repeated auto-start, badge count, daily time averages, the combined outcome percentage and seven-day deletion/migration. The animation is a single short CSS effect with a reduced-motion override; no new animation or polling loop is added.

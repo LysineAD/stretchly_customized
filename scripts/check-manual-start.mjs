@@ -169,7 +169,7 @@ for (const type of ['mini', 'long', 'extended']) {
       deadline: (await window.breaks.sendBreakData())[9],
       startVisible: getComputedStyle(document.querySelector('#start')).display !== 'none',
       startText: document.querySelector('#start').textContent,
-      hint: document.querySelector('#start-hint').textContent,
+      hintAbsent: !document.querySelector('#start-hint'),
       progress: document.querySelector('#progress').value,
       closeVisible: getComputedStyle(document.querySelector('#close')).display !== 'none',
       postponeVisible: getComputedStyle(document.querySelector('#postpone')).display !== 'none',
@@ -180,7 +180,7 @@ for (const type of ['mini', 'long', 'extended']) {
     if (autoStartCheck) {
       for (let attempt = 0; attempt < 100; attempt++) {
         const states = await Promise.all(connections.map(connection => connection.evaluate(stateExpression).then(JSON.parse)))
-        if (states.every(state => state.deadline !== null && /^Auto-starts/.test(state.hint))) break
+        if (states.every(state => state.deadline !== null)) break
         await sleep(100)
       }
     } else await sleep(3500)
@@ -200,8 +200,7 @@ for (const type of ['mini', 'long', 'extended']) {
       assert.equal(state.started, null)
       assert.equal(state.startVisible, true)
       assert.equal(state.startText, 'Start break')
-      if (autoStartCheck) assert.match(state.hint, /^Auto-starts in \d+ s$/)
-      else assert.equal(state.hint, 'Ready when you are')
+      assert.equal(state.hintAbsent, true)
       assert.equal(state.progress, 10000)
       assert.equal(state.closeVisible, false)
       assert.equal(state.postponeVisible, true)

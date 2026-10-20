@@ -14,7 +14,7 @@ for (const type of ['mini', 'long', 'extended']) {
   const data = join(profile, 'Data')
   mkdirSync(data, { recursive: true })
   const statisticsPath = join(data, 'stretchly-statistics.json')
-  const emptyHistory = { version: 1, days: {}, lifetime: {} }
+  const emptyHistory = { version: 2, days: {} }
   writeFileSync(statisticsPath, JSON.stringify(emptyHistory))
   writeFileSync(statisticsPath + '.bak', JSON.stringify(emptyHistory))
   writeFileSync(join(data, 'config.json'), JSON.stringify({
@@ -101,30 +101,37 @@ for (const type of ['mini', 'long', 'extended']) {
       const windows = await targets()
       if (windows.length) {
         returned = await connect(windows[0])
-        if (await returned('document.querySelector("#start")?.getBoundingClientRect().height > 0')) break
+        if ((await returned(state)).data[9] > Date.now()) break
       }
     }
     assert.ok(returned, type + ': postponed reminder returns')
-    await sleep(5000)
     const waiting = await returned(state)
-    assert.equal(waiting.data[1], null, 'Returned reminders must never auto-start')
-    assert.equal(waiting.data[9], null, 'Returned reminders have no auto-start deadline')
-    assert.equal(waiting.statistics.current.extraPostpones, 0)
-    assert.equal(waiting.statistics.today.skipped + waiting.statistics.today.unfinished, 0)
-    await returned('document.querySelector("#start").click()')
-    let saved
+    assert.equal(waiting.data[1], null)
+    assert.ok(waiting.data[9] > Date.now(), 'Returned reminders re-arm auto-start')
+    assert.equal(waiting.statistics.current.postpones, 1)
+    assert.equal(await returned('document.querySelector(".postpone-count").textContent'), '+1')
+    assert.equal(await returned('document.querySelectorAll(".break-statistics-table tbody tr").length'), 4)
+    assert.equal(await returned('document.querySelectorAll("#start-hint,.break-lifetime,.break-statistics-caption,.break-statistics-heading").length'), 0)
+    let running
+    for (let attempt = 0; attempt < 60; attempt++) {
+      await sleep(100)
+      running = await returned(state)
+      if (running.data[1] !== null) break
+    }
+    assert.ok(running.data[1] >= waiting.data[9], 'A returned reminder auto-starts without clicking Start')
+    let saved, period
     for (let attempt = 0; attempt < 70; attempt++) {
       await sleep(100)
       saved = JSON.parse(readFileSync(statisticsPath, 'utf8'))
-      if (saved.lifetime.completed === 1) break
+      period = Object.values(saved.days).find(day => day.breaks === 1)
+      if (period) break
     }
-    assert.equal(saved.lifetime.completed, 1)
-    assert.equal(saved.lifetime.withoutDelay, 1)
-    assert.equal(saved.lifetime.extraPostpones, 0)
-    assert.equal(saved.lifetime.skipped + saved.lifetime.unfinished, 0)
-    assert.ok(saved.lifetime.breakMs[type] >= 2900)
-    reports.push({ type, originalDeadline: first.data[9], normalFirstPostpone: true, returnedManualOnly: true, saved: saved.lifetime })
-    console.log(type + ': early reminder, normal first Postpone, manual-only return and saved statistics passed')
+    assert.equal(period.breaks, 1)
+    assert.equal(period.withoutDelay, 1)
+    assert.ok(period.breakMs >= 2900)
+    assert.equal(saved.lifetime, undefined)
+    reports.push({ type, normalFirstPostpone: true, returnedAutoStart: true, saved: period })
+    console.log(type + ': recurring auto-start, +1 badge, minimal statistics and seven-day storage passed')
   } finally {
     sockets.forEach(socket => socket.close())
     child.kill()

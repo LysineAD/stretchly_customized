@@ -1,8 +1,11 @@
-const types = ['mini', 'long', 'extended', 'idle']
-const fields = ['completed', 'withoutDelay', 'extraPostpones', 'skipped', 'unfinished', 'workMs', 'stretchTotalMs', 'stretchCount', 'longestStretchMs']
+const fields = ['breakMs', 'breaks', 'withoutDelay', 'workMs', 'stretchTotalMs', 'stretchCount']
 const safe = value => Number.isFinite(value) ? Math.max(0, value) : 0
-const emptyPeriod = () => ({ breakMs: Object.fromEntries(types.map(type => [type, 0])), ...Object.fromEntries(fields.map(field => [field, 0])) })
-const cleanPeriod = period => ({ breakMs: Object.fromEntries(types.map(type => [type, safe(period?.breakMs?.[type])])), ...Object.fromEntries(fields.map(field => [field, safe(period?.[field])])) })
+const emptyPeriod = () => Object.fromEntries(fields.map(field => [field, 0]))
+const cleanPeriod = period => ({
+  ...Object.fromEntries(fields.map(field => [field, safe(period?.[field])])),
+  breakMs: typeof period?.breakMs === 'object' ? Object.values(period.breakMs ?? {}).reduce((total, value) => total + safe(value), 0) : safe(period?.breakMs),
+  breaks: safe(period?.breaks ?? (safe(period?.completed) + safe(period?.skipped) + safe(period?.unfinished)))
+})
 
 export const dateKey = time => {
   const date = new Date(time)
@@ -13,10 +16,11 @@ export default class BreakStatistics {
   constructor ({ data = {}, now = Date.now, onChange = () => {} } = {}) {
     this.now = now
     this.onChange = onChange
-    this.data = { version: 1, lifetime: cleanPeriod(data.lifetime), days: {} }
-    for (const [key, period] of Object.entries(data.days ?? {}).slice(-366)) {
+    this.data = { version: 2, days: {} }
+    for (const [key, period] of Object.entries(data.days ?? {})) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(key)) this.data.days[key] = cleanPeriod(period)
     }
+    this.prune()
     this.lastAt = now()
     this.startedAt = this.lastAt
     this.mode = 'work'
@@ -31,7 +35,7 @@ export default class BreakStatistics {
   periods (at) {
     const key = dateKey(at)
     this.data.days[key] ??= emptyPeriod()
-    return [this.data.days[key], this.data.lifetime]
+    return [this.data.days[key]]
   }
 
   add (field, value, at = this.now()) {
@@ -46,7 +50,7 @@ export default class BreakStatistics {
       const value = (end - from) * sign
       for (const period of this.periods(from)) {
         if (kind === 'work') period.workMs = Math.max(0, period.workMs + value)
-        else period.breakMs[kind] = Math.max(0, period.breakMs[kind] + value)
+        else period.breakMs = Math.max(0, period.breakMs + value)
       }
       from = end
     }
@@ -68,10 +72,10 @@ export default class BreakStatistics {
     }
   }
 
-  offer ({ type, dueAt, early = false, plannedIntervalMs }) {
+  offer ({ type }) {
     this.advance()
     if (this.episode?.type === type) return
-    this.episode = { type, dueAt, early, plannedIntervalMs, postpones: 0, extraPostpones: 0, firstStart: null, hasStarted: false, normalFirstPostpone: false }
+    this.episode = { type, postpones: 0, hasStarted: false }
     this.onChange()
   }
 
@@ -79,13 +83,8 @@ export default class BreakStatistics {
     this.advance()
     const episode = this.episode
     if (!episode) return false
-    const normal = episode.postpones === 0 && episode.early && this.now() <= episode.dueAt
     episode.postpones++
-    if (normal) episode.normalFirstPostpone = true
-    else {
-      episode.extraPostpones++
-      this.add('extraPostpones', 1)
-    }
+    const normal = episode.postpones === 1
     if (this.mode !== 'paused') this.mode = this.idleQualified ? 'idle' : 'work'
     this.breakType = null
     this.onChange()
@@ -95,7 +94,6 @@ export default class BreakStatistics {
   start (type, duration = Infinity) {
     this.advance()
     if (!this.episode || this.mode === 'break') return
-    this.episode.firstStart ??= this.now()
     this.episode.hasStarted = true
     this.episode.activeStartedAt = this.now()
     this.episode.duration = duration
@@ -108,7 +106,6 @@ export default class BreakStatistics {
     if (this.stretchMs > 0) {
       this.add('stretchCount', 1, at)
       this.add('stretchTotalMs', this.stretchMs, at)
-      for (const period of this.periods(at)) period.longestStretchMs = Math.max(period.longestStretchMs, this.stretchMs)
     }
     this.stretchMs = 0
     this.workSpans = []
@@ -118,11 +115,11 @@ export default class BreakStatistics {
     this.advance()
     const episode = this.episode
     if (!episode) return
+    this.add('breaks', 1)
     if (completed && episode.hasStarted) {
-      this.add('completed', 1)
-      if (episode.extraPostpones === 0 && episode.firstStart <= episode.dueAt + 60000) this.add('withoutDelay', 1)
+      if (episode.postpones <= 1) this.add('withoutDelay', 1)
       this.finishStretch()
-    } else this.add(episode.hasStarted ? 'unfinished' : 'skipped', 1)
+    }
     this.episode = null
     this.breakType = null
     if (this.mode !== 'paused') this.mode = this.idleQualified ? 'idle' : 'work'
@@ -186,37 +183,32 @@ export default class BreakStatistics {
     }
   }
 
-  snapshot (plannedIntervalMs) {
-    this.advance()
-    const today = cleanPeriod(this.data.days[dateKey(this.now())])
-    const week = emptyPeriod()
+  prune () {
+    const today = dateKey(this.now())
     const firstDay = new Date(this.now())
     firstDay.setDate(firstDay.getDate() - 6)
-    const firstKey = dateKey(firstDay)
-    const todayKey = dateKey(this.now())
-    for (const [key, period] of Object.entries(this.data.days)) {
-      if (key < firstKey || key > todayKey) continue
-      for (const type of types) week.breakMs[type] += period.breakMs[type]
-      for (const field of fields) {
-        if (field === 'longestStretchMs') week[field] = Math.max(week[field], period[field])
-        else week[field] += period[field]
-      }
+    const first = dateKey(firstDay)
+    for (const key of Object.keys(this.data.days)) {
+      if (key < first || key > today) delete this.data.days[key]
+    }
+  }
+
+  snapshot () {
+    this.advance()
+    this.prune()
+    const today = cleanPeriod(this.data.days[dateKey(this.now())])
+    const week = emptyPeriod()
+    for (const period of Object.values(this.data.days)) {
+      for (const field of fields) week[field] += period[field]
     }
     const episode = this.episode
     const kind = episode ? `${episode.type === 'mini' ? 'Mini' : episode.type === 'extended' ? 'Extended' : 'Long'} break` : ''
-    return {
-      current: { kind, status: this.mode === 'break' ? 'Break in progress' : 'Waiting for Start', extraPostpones: episode?.extraPostpones ?? 0, workMs: this.stretchMs },
-      plannedIntervalMs: episode?.plannedIntervalMs ?? plannedIntervalMs,
-      today,
-      week,
-      lifetime: cleanPeriod(this.data.lifetime)
-    }
+    return { current: { kind, postpones: episode?.postpones ?? 0 }, today, week }
   }
 
   serialize () {
     this.advance()
-    const keys = Object.keys(this.data.days).sort()
-    for (const key of keys.slice(0, -366)) delete this.data.days[key]
+    this.prune()
     return JSON.stringify(this.data)
   }
 }

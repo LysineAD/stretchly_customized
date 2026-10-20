@@ -29,7 +29,7 @@
     "skipCurrentBreak": "Skip current break"
   },
   "break": {
-    "postpone": "Postpone this break",
+    "postpone": "Postpone",
     "skip": "Skip this break",
     "title": "Time to take a break!",
     "finish": "Finish this break",
@@ -68,7 +68,7 @@
       "miniAutoStart": "Mini: preparation / Postpone",
       "longAutoStart": "Long: preparation / Postpone",
       "extendedAutoStart": "Extended: preparation / Postpone",
-      "autoStartHelp": "The first reminder appears this early, so automatic Start lands on the scheduled time. Postpone uses the same delay. After any Postpone, Start is always manual. Set 0 to wait for Start without an early reminder.",
+      "autoStartHelp": "The first reminder appears this early, so automatic Start lands on the scheduled time. Postpone uses the same delay. Auto-start runs again whenever a postponed reminder returns. Set 0 to wait for Start without an early reminder.",
       "autoStartOff": "Wait for Start",
       "autoStartSeconds": "{{seconds}} seconds",
       "idleThreshold": "Handle idle time after",

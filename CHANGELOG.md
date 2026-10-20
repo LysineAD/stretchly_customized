@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+### Customized simplification — 2026-10-20
+- Restore auto-start on every postponed return; manual Start can still begin sooner.
+- Give advice the full-width main area. Remove status/scheduling text, the current-work headline, lifetime footer, break-type breakdowns, separate postpone/skip metrics, longest stretch and planned interval.
+- Keep four rows: Break time, Without delay %, Average stretch and Computer use, with Today and 7-day daily-average columns.
+- Show a small +N badge beside Postpone, counting each press. Zero or one Postpone qualifies as without delay; additional postponements, skips and early endings count against that rate.
+- Retain only seven local calendar dates; migrate old records and rewrite both main statistics and backup without lifetime totals.
+
+Earlier customization stages below describe the previous editions.
+
 ### Added
 - Extended breaks, fixed 860 × 720 Compact windows, all-size click-through and mirrored manual Start with one shared global shortcut.
 - Today/Last 7 days statistics and lifetime totals in every break window, with current extra postpones and work stretch prominent.

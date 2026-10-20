@@ -56,12 +56,12 @@ These use isolated profiles under `.scratch`; they do not overwrite the user's s
 Completion checks:
 
 - Fixed Compact bounds on both monitors before/after Start; original advice fonts retained, long advice scrolls, and every statistics row and control remains visible with clock on/off.
-- Button/native shared shortcut start all selected monitors together. First preparation auto-start lands at the original deadline; any Postpone cancels that auto-start for the remainder of the break episode.
+- Button/native shared shortcut start all selected monitors together. First preparation auto-start lands at the original deadline; every postponed return re-arms its own auto-start wait (unless set to zero).
 - Waiting leaves progress full; after Start the full duration runs; the same shortcut then postpones whenever enabled; strict mode continues to hide on-window Skip.
 - Existing Window/Full screen, click-through controls and notification behavior pass.
 - Strict mode hides on-window Skip but tray Skip/Pause/Preferences/Quit stay available.
 - The existing idle toggle enables/disables both thresholds. Check first/second-half Long-cycle recovery, retaining an upcoming Extended after repeated short idle, escalation to full reset, recovery after a running break, disabling monitoring, notification timing and intentional tray Pause.
-- First preparation Postpone records zero extra/skip/unfinished, and a Start within the one-minute tolerance counts without delay. Later Postpone clicks add one extra each. Verify all break types, daily/weekly boundaries, storage restore and timer/idle time without overlap.
+- Verify the +N badge beside Postpone, recurring auto-start for every break type, and the four-row Today/7-day avg/day table. Zero/one Postpone is without delay; more, Skip and early endings lower the rate. Confirm time totals divide by seven, seven-date retention in main and backup, legacy migration, midnight boundaries and timer/idle time without overlap.
 - All Preferences controls save, and the last Schedule control is reachable by scrolling.
 
 Run `node scripts/check-manual-start.mjs dist/win-unpacked --postpone` for three repeated button/shortcut postponements per break type. See `CUSTOM_CODE_AUDIT.md` for the custom-only audit scope and findings.

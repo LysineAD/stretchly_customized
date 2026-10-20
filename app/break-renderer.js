@@ -9,8 +9,8 @@ import createBreakStartControl from './utils/breakStartControl.js'
 window.onload = async (event) => {
   const startControl = createBreakStartControl()
   const [idea, initialStarted, duration, strictMode, postpone,
-    postponePercent, backgroundColor, danger, breakHealthMode, autoStartAt] = await window.breaks.sendBreakData()
-  startControl.initialize(initialStarted, autoStartAt)
+    postponePercent, backgroundColor, danger, breakHealthMode] = await window.breaks.sendBreakData()
+  startControl.initialize(initialStarted)
 
   document.ondragover = event =>
     event.preventDefault()
@@ -96,6 +96,7 @@ window.onload = async (event) => {
       window.breaks.statistics().then(snapshot => { if (snapshot) statisticsView.update(snapshot) }).catch(() => {}).finally(() => { statisticsPending = false })
     }
     const started = startControl.started
+    progressTime.classList.toggle('hidden', started === null)
     const passed = started === null ? 0 : now - started
     const currentSecond = Math.floor(passed / 1000)
     const secondChanged = currentSecond !== lastShownSecond

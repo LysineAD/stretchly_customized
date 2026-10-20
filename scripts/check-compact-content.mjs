@@ -63,7 +63,7 @@ app.whenReady().then(async () => {
         const heading = document.querySelector('.microbreak-idea, .break-idea')
         const text = document.querySelector('.break-text')
         const advice = document.querySelector('.break-advice')
-        const fixed = [...document.querySelectorAll('.break-statistics-heading, .break-statistics-table, .break-statistics-caption, .break-lifetime, .break-controls')]
+        const fixed = [...document.querySelectorAll('.break-type, .break-statistics-table, .break-controls')]
         const clipped = () => fixed.some(element => {
           const rect = element.getBoundingClientRect()
           return rect.top < 0 || rect.left < 0 || rect.bottom > innerHeight + 1 || rect.right > innerWidth + 1

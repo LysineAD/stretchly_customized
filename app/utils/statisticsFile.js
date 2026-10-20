@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, copyFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, rename, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 const maximumBytes = 3 * 1024 * 1024
@@ -10,7 +10,6 @@ export default class StatisticsFile {
     this.queue = Promise.resolve()
     this.timer = null
     this.pending = null
-    this.mainValid = false
   }
 
   async load () {
@@ -19,8 +18,7 @@ export default class StatisticsFile {
         const text = await readFile(path, 'utf8')
         if (Buffer.byteLength(text) > maximumBytes) continue
         const data = JSON.parse(text)
-        if (data?.version === 1 && data.days && typeof data.days === 'object' && data.lifetime) {
-          this.mainValid = path === this.path
+        if ([1, 2].includes(data?.version) && data.days && typeof data.days === 'object') {
           return data
         }
       } catch (error) {
@@ -51,11 +49,9 @@ export default class StatisticsFile {
     this.queue = this.queue.then(async () => {
       await mkdir(dirname(this.path), { recursive: true })
       await writeFile(this.path + '.tmp', text, { encoding: 'utf8', mode: 0o600 })
-      if (this.mainValid) {
-        try { await copyFile(this.path, this.path + '.bak') } catch (error) { if (error.code !== 'ENOENT') throw error }
-      }
       await rename(this.path + '.tmp', this.path)
-      this.mainValid = true
+      await writeFile(this.path + '.tmp', text, { encoding: 'utf8', mode: 0o600 })
+      await rename(this.path + '.tmp', this.path + '.bak')
     }).catch(error => this.onError(error))
     return this.queue
   }

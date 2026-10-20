@@ -8,7 +8,7 @@ vi.mock('../app/utils/naturalBreaksManager.js', async () => ({ default: (await i
 vi.mock('../app/utils/dndManager.js', async () => ({ default: (await import('node:events')).EventEmitter }))
 vi.mock('../app/utils/appExclusionsManager.js', async () => ({ default: (await import('node:events')).EventEmitter }))
 
-describe('early preparation and manual return after Postpone', () => {
+describe('early preparation and recurring auto-start after Postpone', () => {
   const planners = []
   const controllers = []
   beforeEach(() => {
@@ -44,7 +44,7 @@ describe('early preparation and manual return after Postpone', () => {
     const windows = [{ isDestroyed: () => false, webContents: { send: vi.fn() } }]
     const start = vi.fn(() => planner.emit(prefix + 'Started', false))
     const show = vi.fn(() => {
-      controller.wait(type, windows, start, planner.postponedReminder ? 0 : values[delayKey], planner.breakDueAt)
+      controller.wait(type, windows, start, values[delayKey], planner.postponedReminder ? null : planner.breakDueAt)
       planner.waitForBreakStart(type)
     })
     planner.on('start' + eventBase, show)
@@ -74,7 +74,7 @@ describe('early preparation and manual return after Postpone', () => {
     expect(f.planner.scheduler.timeLeft).toBe(f.values[f.prefix + 'Duration'])
   })
 
-  it.each(['mini', 'long', 'extended'])('never auto-starts %s after any postponement', type => {
+  it.each(['mini', 'long', 'extended'])('auto-starts %s after every postponement with a fresh wait', type => {
     const f = setup(type)
     const lead = f.values[f.delayKey]
     const due = f.planner.breakDueAt
@@ -88,10 +88,11 @@ describe('early preparation and manual return after Postpone', () => {
       expect(f.planner.breakDueAt).toBe(due)
       vi.advanceTimersByTime(lead)
       f.controller.arm()
-      expect(f.controller.session.deadline).toBeNull()
-      vi.advanceTimersByTime(120000)
+      expect(f.controller.session.deadline).toBe(Date.now() + lead)
+      vi.advanceTimersByTime(lead - 1)
       expect(f.controller.session.started).toBeNull()
-      f.controller.start(type, f.windows[0].webContents)
+      vi.advanceTimersByTime(1)
+      expect(f.controller.session.started).toBe(Date.now())
       expect(f.planner.scheduler.timeLeft).toBe(f.values[f.prefix + 'Duration'])
     }
     expect(f.start).toHaveBeenCalledTimes(3)
@@ -130,7 +131,10 @@ describe('early preparation and manual return after Postpone', () => {
     f.planner.postponeCurrentBreak()
     vi.advanceTimersByTime(60000)
     f.controller.arm()
-    vi.advanceTimersByTime(3600000)
     expect(f.start).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(59999)
+    expect(f.start).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(f.start).toHaveBeenCalledOnce()
   })
 })

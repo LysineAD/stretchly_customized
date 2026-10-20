@@ -389,6 +389,8 @@ async function initialize (isAppStart = true) {
         statisticsFile.schedule(() => statistics.serialize())
       }
     })
+    statisticsFile.schedule(() => statistics.serialize())
+    await statisticsFile.flush()
     statisticsCheckpoint = setInterval(() => statisticsFile.schedule(() => statistics.serialize()), 300000)
     statisticsCheckpoint.unref()
   }
@@ -856,7 +858,7 @@ function startMicrobreak () {
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
-  statistics.offer({ type: 'mini', dueAt: breakPlanner.breakDueAt ?? Date.now(), early: breakPlanner.reminderLead > 0, plannedIntervalMs: settings.get('microbreakInterval') })
+  statistics.offer({ type: 'mini' })
   const automaticStarted = Date.now()
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []
@@ -865,7 +867,7 @@ function startMicrobreak () {
       statistics.start('mini', breakDuration)
       breakPlanner.emit('microbreakStarted', true)
       updateTray()
-    }, breakPlanner.postponedReminder ? 0 : settings.get('miniBreakAutoStartDelay'), breakPlanner.breakDueAt)
+    }, settings.get('miniBreakAutoStartDelay'), breakPlanner.postponedReminder ? null : breakPlanner.breakDueAt)
     : null
   if (manualStart) breakPlanner.waitForBreakStart('mini')
 
@@ -1048,7 +1050,7 @@ function startBreak (type = 'long') {
   const showBreaksAsRegularWindows = settings.get('showBreaksAsRegularWindows') && !settings.get('compactBreaks')
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
-  statistics.offer({ type, dueAt: breakPlanner.breakDueAt ?? Date.now(), early: breakPlanner.reminderLead > 0, plannedIntervalMs: settings.get('microbreakInterval') * (settings.get('microbreak') ? 1 : settings.get('breakInterval') + 1) })
+  statistics.offer({ type })
   const automaticStarted = Date.now()
   const modalPath = 'file://' + join(__dirname, '/break.html')
   if (isExtended) {
@@ -1063,7 +1065,7 @@ function startBreak (type = 'long') {
       statistics.start(type, breakDuration)
       breakPlanner.emit(isExtended ? 'extendedBreakStarted' : 'breakStarted', true)
       updateTray()
-    }, breakPlanner.postponedReminder ? 0 : settings.get(isExtended ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'), breakPlanner.breakDueAt)
+    }, settings.get(isExtended ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'), breakPlanner.postponedReminder ? null : breakPlanner.breakDueAt)
     : null
   if (manualStart) breakPlanner.waitForBreakStart(bridgeType)
 
@@ -1853,7 +1855,7 @@ ipcMain.handle('break-statistics-data', event => {
   if (!windows.some(window => !window.isDestroyed() && window.webContents === event.sender)) return null
   const second = Math.floor(Date.now() / 1000)
   if (!statisticsCache || statisticsCache.second !== second) {
-    statisticsCache = { second, snapshot: statistics.snapshot(settings.get('microbreakInterval')) }
+    statisticsCache = { second, snapshot: statistics.snapshot() }
   }
   return statisticsCache.snapshot
 })

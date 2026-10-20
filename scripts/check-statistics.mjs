@@ -3,68 +3,72 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import BreakStatistics from '../app/utils/breakStatistics.js'
+import BreakStatistics, { dateKey } from '../app/utils/breakStatistics.js'
 import StatisticsFile from '../app/utils/statisticsFile.js'
 
 const fixture = () => {
-  let time = new Date(2026, 9, 19, 10).getTime()
+  let time = new Date(2026, 9, 20, 10).getTime()
   const stats = new BreakStatistics({ now: () => time })
   return { stats, advance: milliseconds => { time += milliseconds }, get time () { return time } }
 }
 
-for (const [type, lead, duration] of [['mini', 20000, 20000], ['long', 60000, 300000], ['extended', 120000, 600000]]) {
-  test(type + ': the intended first preparation Postpone is neither extra, skipped nor delayed', () => {
+for (const type of ['mini', 'long', 'extended']) {
+  test(type + ': one Postpone remains without delay and records actual break time', () => {
     const f = fixture()
-    const due = f.time + 1200000
-    f.advance(1200000 - lead)
-    f.stats.offer({ type, dueAt: due, early: true, plannedIntervalMs: 1200000 })
-    f.advance(6000)
+    f.advance(1200000)
+    f.stats.offer({ type })
     assert.equal(f.stats.postpone(), true)
-    f.advance(lead)
+    f.advance(120000)
     f.stats.start(type)
-    f.advance(duration)
+    f.advance(20000)
     f.stats.finish(true)
     const result = f.stats.snapshot()
-    assert.equal(result.today.extraPostpones, 0)
-    assert.equal(result.today.skipped, 0)
-    assert.equal(result.today.unfinished, 0)
-    assert.equal(result.today.completed, 1)
+    assert.equal(result.today.breaks, 1)
     assert.equal(result.today.withoutDelay, 1)
-    assert.equal(result.today.breakMs[type], duration)
-    assert.equal(result.today.workMs, 1206000)
+    assert.equal(result.today.breakMs, 20000)
+    assert.equal(result.today.workMs, 1320000)
   })
 }
 
-test('further postponements belong to the same break and do not become skipped breaks', () => {
+test('two or more postponements lower the single outcome rate', () => {
   const f = fixture()
-  f.stats.offer({ type: 'long', dueAt: f.time + 60000, early: true, plannedIntervalMs: 1200000 })
+  f.stats.offer({ type: 'long' })
   assert.equal(f.stats.postpone(), true)
-  for (let index = 0; index < 5; index++) {
-    f.advance(60000)
-    assert.equal(f.stats.postpone(), false)
-  }
-  const result = f.stats.snapshot()
-  assert.equal(result.current.extraPostpones, 5)
-  assert.equal(result.today.extraPostpones, 5)
-  assert.equal(result.week.extraPostpones, 5)
-  assert.equal(result.today.skipped + result.today.unfinished, 0)
-})
-
-test('starting very late is different from taking the intended first postponement', () => {
-  const f = fixture()
-  f.stats.offer({ type: 'long', dueAt: f.time + 60000, early: true })
-  f.stats.postpone()
-  f.advance(600000)
+  assert.equal(f.stats.postpone(), false)
+  assert.equal(f.stats.snapshot().current.postpones, 2)
   f.stats.start('long')
   f.advance(300000)
   f.stats.finish(true)
-  assert.equal(f.stats.snapshot().today.extraPostpones, 0)
+  assert.equal(f.stats.snapshot().today.breaks, 1)
   assert.equal(f.stats.snapshot().today.withoutDelay, 0)
 })
 
-test('partial timer time is retained when postponing and later completing', () => {
+test('skip and early end both count against the rate; reset and Pause do not', () => {
   const f = fixture()
-  f.stats.offer({ type: 'mini', dueAt: f.time, early: false })
+  f.stats.offer({ type: 'mini' })
+  f.stats.finish(false)
+  f.stats.offer({ type: 'long' })
+  f.stats.start('long')
+  f.advance(5000)
+  f.stats.finish(false)
+  f.stats.offer({ type: 'mini' })
+  f.stats.cancel()
+  f.stats.offer({ type: 'mini' })
+  f.stats.pause()
+  f.stats.resume()
+  f.stats.offer({ type: 'extended' })
+  f.stats.start('extended')
+  f.advance(10000)
+  f.stats.finish(true)
+  const period = f.stats.snapshot().today
+  assert.equal(period.breaks, 3)
+  assert.equal(period.withoutDelay, 1)
+  assert.equal(period.breakMs, 15000)
+})
+
+test('partial timer time is retained after Postpone and later completion', () => {
+  const f = fixture()
+  f.stats.offer({ type: 'mini' })
   f.stats.start('mini')
   f.advance(5000)
   f.stats.postpone()
@@ -72,70 +76,49 @@ test('partial timer time is retained when postponing and later completing', () =
   f.stats.start('mini')
   f.advance(20000)
   f.stats.finish(true)
-  assert.equal(f.stats.snapshot().today.breakMs.mini, 25000)
-  assert.equal(f.stats.snapshot().today.completed, 1)
-  assert.equal(f.stats.snapshot().today.unfinished, 0)
+  assert.equal(f.stats.snapshot().today.breakMs, 25000)
+  assert.equal(f.stats.snapshot().today.breaks, 1)
 })
 
-test('skip and unfinished are different outcomes; cancellation does not invent either', () => {
-  const f = fixture()
-  f.stats.offer({ type: 'mini', dueAt: f.time })
-  f.stats.finish(false)
-  f.stats.offer({ type: 'long', dueAt: f.time })
-  f.stats.start('long')
-  f.advance(5000)
-  f.stats.finish(false)
-  f.stats.offer({ type: 'extended', dueAt: f.time })
-  f.stats.cancel()
-  assert.equal(f.stats.snapshot().today.skipped, 1)
-  assert.equal(f.stats.snapshot().today.unfinished, 1)
-})
-
-test('qualifying idle removes its lead-in from computer use without double-crediting timer time', () => {
+test('qualifying idle and timer time never overlap', () => {
   const f = fixture()
   f.advance(600000)
   f.stats.observeIdle(180000, 180000)
-  let result = f.stats.snapshot()
-  assert.equal(result.today.workMs, 420000)
-  assert.equal(result.today.breakMs.idle, 180000)
-  f.stats.offer({ type: 'mini', dueAt: f.time })
+  f.stats.offer({ type: 'mini' })
   f.stats.start('mini')
   f.advance(20000)
   f.stats.finish(true)
-  result = f.stats.snapshot()
-  assert.equal(result.today.breakMs.mini + result.today.breakMs.idle + result.today.workMs, 620000)
+  assert.equal(f.stats.snapshot().today.workMs, 420000)
+  assert.equal(f.stats.snapshot().today.breakMs, 200000)
 })
 
-test('intentional pause excludes time and does not count the app being closed as computer use', () => {
+test('Pause and time while closed are excluded from computer use', () => {
   const f = fixture()
   f.advance(60000)
   f.stats.pause()
   f.advance(3600000)
   f.stats.resume()
   f.advance(60000)
-  assert.equal(f.stats.snapshot().today.workMs, 120000)
   const restored = new BreakStatistics({ data: JSON.parse(f.stats.serialize()), now: () => f.time + 86400000 })
-  assert.equal(restored.snapshot().lifetime.workMs, 120000)
+  assert.equal(restored.snapshot().week.workMs, 120000)
   assert.equal(restored.snapshot().today.workMs, 0)
 })
 
-test('system suspension excludes sleeping time while retaining an active break record', () => {
+test('system suspension retains the break but excludes sleeping time', () => {
   const f = fixture()
-  f.stats.offer({ type: 'long', dueAt: f.time })
-  f.stats.start('long', 300000)
+  f.stats.offer({ type: 'long' })
+  f.stats.start('long')
   f.advance(10000)
   f.stats.suspend()
   f.advance(3600000)
   f.stats.resume()
   f.advance(5000)
   f.stats.finish(true)
-  const result = f.stats.snapshot()
-  assert.equal(result.today.breakMs.long, 15000)
-  assert.equal(result.today.workMs, 0)
-  assert.equal(result.today.completed, 1)
+  assert.equal(f.stats.snapshot().today.breakMs, 15000)
+  assert.equal(f.stats.snapshot().today.workMs, 0)
 })
 
-test('durations are split at local midnight and weekly figures exclude older dates', () => {
+test('local midnight splits time and crossing seven days deletes expired records', () => {
   let time = new Date(2026, 9, 19, 23, 59).getTime()
   const stats = new BreakStatistics({ now: () => time })
   time += 120000
@@ -144,43 +127,49 @@ test('durations are split at local midnight and weekly figures exclude older dat
   stats.pause()
   time += 7 * 86400000
   stats.resume()
+  const saved = JSON.parse(stats.serialize())
   assert.equal(stats.snapshot().week.workMs, 0)
-  assert.equal(stats.snapshot().lifetime.workMs, 120000)
+  assert.equal(Object.keys(saved.days).length, 0)
+  assert.equal(saved.lifetime, undefined)
 })
 
-test('one year of summaries is bounded and invalid loaded values are sanitized', () => {
+test('legacy history migrates to seven days with no lifetime or removed metrics', () => {
+  const now = new Date(2026, 9, 20, 10).getTime()
   const days = {}
-  for (let index = 0; index < 800; index++) {
-    const date = new Date(2024, 0, index + 1)
-    days[`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`] = { workMs: 100 }
+  for (let index = 0; index < 400; index++) {
+    days[dateKey(now - index * 86400000)] = { breakMs: { mini: 100, long: 200, idle: 300 }, completed: 3, skipped: 1, unfinished: 1, withoutDelay: 2, workMs: 1000, extraPostpones: 9, longestStretchMs: 999 }
   }
-  const stats = new BreakStatistics({ data: { days, lifetime: { workMs: -5, extraPostpones: 'bad' } } })
-  const text = stats.serialize()
-  assert.ok(Object.keys(JSON.parse(text).days).length <= 366)
-  assert.ok(Buffer.byteLength(text) < 250000)
-  assert.equal(stats.snapshot().lifetime.extraPostpones, 0)
+  const stats = new BreakStatistics({ data: { version: 1, days, lifetime: { workMs: 999999 } }, now: () => now })
+  const saved = JSON.parse(stats.serialize())
+  assert.equal(saved.version, 2)
+  assert.equal(Object.keys(saved.days).length, 7)
+  assert.equal(saved.lifetime, undefined)
+  assert.equal(saved.days[dateKey(now)].breakMs, 600)
+  assert.equal(saved.days[dateKey(now)].breaks, 5)
+  assert.equal(saved.days[dateKey(now)].extraPostpones, undefined)
+  assert.equal(saved.days[dateKey(now)].longestStretchMs, undefined)
+  assert.equal(stats.snapshot().week.workMs / 7, 1000)
 })
 
-test('statistics are written serially and recover from a damaged main file using the backup', async () => {
+test('main file and recoverable backup both contain only the current seven days', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'stretchly-stats-'))
   try {
     const path = join(directory, 'statistics.json')
-    const errors = []
-    const file = new StatisticsFile(path, error => errors.push(error))
+    const file = new StatisticsFile(path)
     const f = fixture()
     f.advance(60000)
     file.schedule(() => f.stats.serialize())
     await file.flush()
-    f.advance(60000)
+    f.advance(8 * 86400000)
+    f.stats.pause()
     file.schedule(() => f.stats.serialize())
     await file.flush()
-    assert.equal(JSON.parse(await readFile(path, 'utf8')).lifetime.workMs, 120000)
-    assert.equal(errors.length, 0)
+    const current = JSON.parse(await readFile(path, 'utf8'))
+    const backup = JSON.parse(await readFile(path + '.bak', 'utf8'))
+    assert.deepEqual(current, backup)
+    assert.ok(Object.keys(current.days).length <= 7)
+    assert.equal(current.lifetime, undefined)
     await writeFile(path, 'damaged')
-    const recovered = await file.load()
-    assert.equal(recovered.lifetime.workMs, 60000)
-    file.schedule(() => f.stats.serialize())
-    await file.flush()
-    assert.equal(JSON.parse(await readFile(path + '.bak', 'utf8')).lifetime.workMs, 60000)
+    assert.deepEqual(await file.load(), backup)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
