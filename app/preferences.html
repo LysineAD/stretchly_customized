@@ -74,16 +74,6 @@
           <input type="range" min="0" max="120" step="1" name="miniBreakAutoStartDelay" data-divisor="1000" id="miniAutoStart">
           <output data-unit="autoStartSeconds"></output>
         </div>
-        <div>
-          <label data-i18next="preferences.settings.longAutoStart" for="longAutoStart"></label>
-          <input type="range" min="0" max="900" step="15" name="longBreakAutoStartDelay" data-divisor="1000" id="longAutoStart">
-          <output data-unit="autoStartSeconds"></output>
-        </div>
-        <div>
-          <label data-i18next="preferences.settings.extendedAutoStart" for="extendedAutoStart"></label>
-          <input type="range" min="0" max="1800" step="30" name="extendedBreakAutoStartDelay" data-divisor="1000" id="extendedAutoStart">
-          <output data-unit="autoStartSeconds"></output>
-        </div>
         <p data-i18next="preferences.settings.autoStartHelp"></p>
       </section>
       <section class="preference-card">
@@ -99,22 +89,20 @@
           <div id="breakShortcutError" role="alert" class="hidden" data-i18next="preferences.settings.breakShortcutError"></div>
         </div>
         <div>
+          <label data-i18next="preferences.settings.startLargerBreakShortcut" for="startLargerBreakShortcut"></label>
+          <input type="text" id="startLargerBreakShortcut" aria-describedby="startLargerBreakShortcutHelp startLargerBreakShortcutError">
+          <div id="startLargerBreakShortcutHelp" data-i18next="preferences.settings.startLargerBreakShortcutHelp"></div>
+          <div id="startLargerBreakShortcutError" role="alert" class="hidden" data-i18next="preferences.settings.breakShortcutError"></div>
+        </div>
+        <div>
+          <label data-i18next="preferences.settings.largerBreakPostponeLimit" for="largerBreakPostponeLimit"></label>
+          <input type="number" min="0" max="99" step="1" id="largerBreakPostponeLimit">
+        </div>
+        <div>
           <input type="checkbox" value="naturalBreaks" id="monitorIdleTime">
           <label data-i18next="preferences.settings.monitorIdleTime" for="monitorIdleTime"></label>
         </div>
-        <fieldset id="idleControls">
-          <div>
-            <label data-i18next="preferences.settings.idleShortThreshold" for="idleThreshold"></label>
-            <input type="range" min="1" max="60" step="1" name="naturalBreaksInactivityResetTime" data-divisor="60000" id="idleThreshold">
-            <output data-unit="minutes"></output>
-          </div>
-          <div>
-            <label data-i18next="preferences.settings.idleLongThreshold" for="idleLongThreshold"></label>
-            <input type="range" min="2" max="180" step="1" name="naturalBreaksLongIdleResetTime" data-divisor="60000" id="idleLongThreshold">
-            <output data-unit="minutes"></output>
-          </div>
-          <p data-i18next="preferences.settings.idleHelp"></p>
-        </fieldset>
+        <p data-i18next="preferences.settings.idleHelp"></p>
         <div>
           <input type="checkbox" class="negative" value="monitorDnd" id="monitorDnd">
           <label data-i18next="preferences.settings.monitorDnd" for="monitorDnd"></label>

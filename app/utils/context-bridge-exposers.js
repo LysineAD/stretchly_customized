@@ -71,6 +71,7 @@ function exposeSettings () {
   contextBridge.exposeInMainWorld('settings', {
     get: (key) => ipcRenderer.invoke('settings-get', key),
     saveBreakShortcut: (value) => ipcRenderer.invoke('save-break-shortcut', value),
+    saveLargerBreakShortcut: (value) => ipcRenderer.invoke('save-larger-break-shortcut', value),
     currentSettings: async () => {
       return await ipcRenderer.invoke('current-settings')
     },

@@ -19,7 +19,7 @@ body { overflow: hidden; }
     'Noto Sans Gujarati Light', 'Noto Sans Gurmukhi Light',
     'Noto Sans Hebrew Light';
   font-weight: 300;
-  grid-template: auto minmax(0, 1fr) auto auto / minmax(0, 1fr);
+  grid-template: auto minmax(0, 1fr) auto auto auto / minmax(0, 1fr);
   height: 100vh;
   gap: 18px;
   margin: auto;
@@ -75,7 +75,7 @@ body.break-health-mode {
   align-items: center;
   font-size: 18px;
   gap: 10px;
-  grid-row: 3;
+  grid-row: 4;
   letter-spacing: 0.26px;
   line-height: 24px;
 }
@@ -122,8 +122,20 @@ body[dir=rtl] .break-controls a img { padding-left: 0; padding-right: 20px; }
 }
 
 .break-statistics { display: contents; }
+.break-debt {
+  grid-row: 3;
+  justify-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 22px;
+  font-size: 14px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.break-debt strong { font-weight: 600; }
 .break-statistics-table {
-  grid-row: 4;
+  grid-row: 5;
   justify-self: center;
   border-collapse: collapse;
   border-top: 1px solid #ffffff36;

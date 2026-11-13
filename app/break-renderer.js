@@ -9,7 +9,7 @@ import createBreakStartControl from './utils/breakStartControl.js'
 window.onload = async (event) => {
   const startControl = createBreakStartControl()
   const [idea, initialStarted, duration, strictMode, postpone,
-    postponePercent, backgroundColor, danger, breakHealthMode] = await window.breaks.sendBreakData()
+    postponePercent, backgroundColor, danger, breakHealthMode, , postponeEnabled] = await window.breaks.sendBreakData()
   startControl.initialize(initialStarted)
 
   document.ondragover = event =>
@@ -109,7 +109,7 @@ window.onload = async (event) => {
         } else {
           postponeElement.classList.add('hidden')
         }
-        if (window.utils.canSkip(strictMode, postpone, passedPercent, postponePercent)) {
+        if (window.utils.canSkip(strictMode, postponeEnabled, passedPercent, postponePercent)) {
           closeElement.classList.remove('hidden')
         } else {
           closeElement.classList.add('hidden')

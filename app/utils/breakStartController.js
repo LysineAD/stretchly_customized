@@ -5,13 +5,13 @@ export default class BreakStartController {
 
   wait (type, windows, onStart, delay = 0, deadline = null) {
     this.clear()
-    this.session = { type, windows, onStart, started: null, deadline: delay > 0 ? deadline : null, delay, timer: null, armed: false }
+    this.session = { type, windows, onStart, started: null, deadline: delay > 0 ? deadline : null, delay, timer: null, armed: false, pausedAt: null }
     return this.session
   }
 
   arm () {
     const session = this.session
-    if (!session || session.armed || session.started !== null) return
+    if (!session || session.armed || session.started !== null || session.pausedAt !== null) return
     session.armed = true
     if (session.delay > 0) {
       session.deadline ??= Date.now() + session.delay
@@ -26,7 +26,7 @@ export default class BreakStartController {
 
   start (type, sender) {
     const session = this.session
-    if (!session || session.started !== null || (type && type !== session.type)) return null
+    if (!session || session.started !== null || session.pausedAt !== null || (type && type !== session.type)) return null
     if (sender && !session.windows.some(window => !window.isDestroyed() && window.webContents === sender)) return null
     clearTimeout(session.timer)
     session.timer = null
@@ -36,6 +36,22 @@ export default class BreakStartController {
       if (!window.isDestroyed()) window.webContents.send('break-countdown-started', session.started)
     }
     return session.started
+  }
+
+  pause () {
+    const session = this.session
+    if (!session || session.started !== null || session.pausedAt !== null) return
+    session.pausedAt = Date.now()
+    clearTimeout(session.timer)
+    session.armed = false
+  }
+
+  resume () {
+    const session = this.session
+    if (!session || session.pausedAt === null) return
+    if (session.deadline !== null) session.deadline += Date.now() - session.pausedAt
+    session.pausedAt = null
+    this.arm()
   }
 
   clear () {

@@ -142,7 +142,7 @@ You'll be notified 10 seconds before a Mini break (and 30 seconds before a Long 
 
 <img src="notification.png" height="90">
 
-In this Customized build, enabled postponement is available throughout a break and can be repeated without a count limit. Schedule offers separate 1–30 minute delay sliders for Mini, Long and Extended breaks (defaults 2, 5 and 5 minutes). Strict mode hides on-window Skip while retaining Postpone and the intentional tray Skip override. Both actions are available by clicking on the link at the bottom of window or by using the `Ctrl/Cmd + X` keyboard shortcut.
+In this Customized build, Long postponements are 2, 4, 6 minutes and so on. Extended postponements are 4, 6, 8 minutes and so on. Set the maximum number per break in Settings. Mini postponement uses its existing preparation delay. Strict mode continues to hide on-window Skip and the tray retains its intentional Skip action.
 
 <img src="skip.png" height="340">
 
@@ -170,11 +170,11 @@ Type `stretchly help` to get a list of all commands and options available as wel
 
 This fork includes Extended breaks and is based on Stretchly 1.22.1. Preferences offers Window, Full screen, or **Compact**. Compact uses a fixed **860 × 720 logical-pixel** window centered on each selected monitor, with the original advice typography. Smaller work areas clamp that size. **Allow clicks through break windows** applies to all three display choices; visible controls and links remain clickable.
 
-Enable **Start breaks manually** to show a preparation reminder before the scheduled deadline. **Start break** and the existing **break shortcut** (default **Ctrl+X** on Windows) start the same full-duration countdown on every selected monitor. The three sliders set preparation lead and Postpone delay: Mini **20 seconds**, Long **60 seconds**, Extended **120 seconds** by default. The first reminder auto-starts at the original deadline; **auto-start runs again whenever a postponed reminder returns**; Start can begin the break sooner. Zero waits indefinitely and retains the old Postpone delay. Before-break notification switches and lead times remain independent.
+Long and Extended breaks show a small notice one minute ahead when notifications are enabled. The break window opens when due and automatically starts after 20 seconds. Use Start to begin sooner or Ctrl+X to dismiss the notice or postpone the waiting break. Set a separate **Start next Long or Extended break** shortcut to take the next larger break early. Mini preparation still uses its own setting.
 
-Use **Monitor system idle time** with two sliders. **Short idle** (1–60 minutes, default 5) restarts the current Long cycle while retaining its upcoming Long/Extended break. With Mini every 20 minutes and Long every 40, returning starts Mini → the same Long/Extended again. **Long idle** (2–180 minutes, default 30, always longer than Short) starts a fresh schedule. Both wait for activity before counting again.
+Enable **Monitor system idle time** to credit qualifying AFK. The configured Long and Extended durations set the thresholds. An early Long-length absence restarts the work interval. An absence close to a scheduled break can fulfill it, and an Extended-length absence starts a fresh reminder session.
 
-Every break window gives the tip the main full-width area and shows only **Break time, Without delay %, Average stretch and Computer use**, in **Today** and **7-day avg/day** columns. The latter divides time totals by seven; rates and average stretch use their seven-day samples. A small **Postpone +1, +2** badge counts presses. Zero or one Postpone counts as without delay; additional postponements, skips and early endings lower that one percentage. History and its backup retain only seven calendar dates. Lifetime, longest stretch, type breakdowns, scheduling text and the large current-work headline are removed. See [statistics definitions](STATISTICS.md).
+Every break window gives the tip the main full-width area and shows only **Break time, Without delay %, Average stretch and Computer use**, in **Today** and **7-day avg/day** columns. The latter divides time totals by seven; rates and average stretch use their seven-day samples. A small **Postpone +1, +2** badge counts presses. Zero or one Postpone counts as without delay; additional postponements, skips and early endings lower that one percentage. History and its backup retain only seven calendar dates. Lifetime, longest stretch, type breakdowns, scheduling text and the large current-work headline are removed. See [statistics and break debt definitions](STATISTICS.md).
 
 Strict mode hides on-window Skip. The tray always remains available for intentional **Skip current break**, Pause, Preferences and Quit. Preferences uses scrolling and two columns, switching to one column on narrow windows.
 
@@ -296,7 +296,7 @@ E.g. if you live in Boston you would set:
 `posLongitude: 71`
 
 #### Editing postpone functionality [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-Use Schedule to enable postponement. The three preparation / Postpone sliders in Settings set its per-type delay as well as the first reminder's lead. Positive `miniBreakAutoStartDelay`, `longBreakAutoStartDelay` and `extendedBreakAutoStartDelay` values take precedence over legacy `microbreakPostponeTime`, `breakPostponeTime` and `extendedBreakPostponeTime` values, all in milliseconds. Legacy `*PostponesLimit` values are ignored. The `*PostponableDurationPercent` values retain their original effect on non-strict Skip; they no longer hide Postpone.
+Use Schedule to enable postponement. Use Settings to set a count limit for Long and Extended breaks. Their delays increase by two minutes per press and the break window auto-starts after 20 seconds on return. The Mini preparation slider still controls the Mini postponement delay.
 
 #### New version notification [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 In the preferences file, set `notifyNewVersion: false,` to disable new version notification.
@@ -311,7 +311,7 @@ To play different sound for Mini breaks, set `miniBreakAudio` to desired value (
 To have different theme for Mini breaks, set `miniBreakColor` to desired value, ie `#123456`.
 
 #### Natural breaks inactivity time [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
-Main Settings exposes Short idle (1–60 minutes) and Long idle (2–180 minutes, greater than Short). Short restarts the whole current Long cycle without losing its upcoming Long/Extended ordinal; Long resets the entire schedule. Countdown resumes on activity. The previous `naturalBreaksIdleMode` and `naturalBreaksResetOnIdle` settings are obsolete.
+Main Settings enables or disables idle monitoring. Long and Extended duration settings determine when AFK qualifies for their breaks.
 
 The corresponding settings are `naturalBreaksInactivityResetTime` (default `300000`) and `naturalBreaksLongIdleResetTime` (default `1800000`), in milliseconds.
 

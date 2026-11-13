@@ -14,7 +14,7 @@ describe('minimal break statistics', () => {
   it('shows only four rows, daily time averages and a badge beside Postpone', () => {
     const { container, stat, view } = setup()
     view.update({
-      current: { kind: 'Long break', postpones: 2 },
+      current: { kind: 'Long break', postpones: 2, debtTotal: 420000, debtPayment: 120000 },
       today: { breakMs: 3600000, breaks: 3, withoutDelay: 2, workMs: 28800000, stretchTotalMs: 14400000, stretchCount: 10 },
       week: { breakMs: 25200000, breaks: 10, withoutDelay: 8, workMs: 201600000, stretchTotalMs: 36000000, stretchCount: 20 }
     })
@@ -22,6 +22,8 @@ describe('minimal break statistics', () => {
     expect(container.children[1].className).toBe('break-controls')
     expect(container.querySelectorAll('tbody tr')).toHaveLength(4)
     expect(stat('break-kind')).toBe('Long break')
+    expect(stat('debt-total')).toBe('7 m')
+    expect(stat('debt-payment')).toBe('2 m')
     expect(stat('today-break-total')).toBe('1 h 0 m')
     expect(stat('week-break-total')).toBe('1 h 0 m')
     expect(stat('today-without-delay')).toBe('67%')

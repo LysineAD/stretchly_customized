@@ -45,8 +45,9 @@ describe('customized usability regressions', () => {
     const postponeCurrentBreak = vi.fn()
     const context = {
       [windowsKey]: [{}],
-      statistics: { postpone: vi.fn() },
-      breakPlanner: { scheduler: { reference }, postponeCurrentBreak },
+      settings: { get: () => true },
+      statistics: { postpone: vi.fn(), debt: { postpone: vi.fn() } },
+      breakPlanner: { scheduler: { reference }, postponeCurrentBreak, canPostponeLargerBreak: true },
       increaseDanger: vi.fn(),
       breakComplete: () => null,
       log: { info: vi.fn() },

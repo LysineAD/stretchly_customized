@@ -1,3 +1,6 @@
+import BreakDebt from './breakDebt.js'
+import { dateKey } from './localDate.js'
+
 const fields = ['breakMs', 'breaks', 'withoutDelay', 'workMs', 'stretchTotalMs', 'stretchCount']
 const safe = value => Number.isFinite(value) ? Math.max(0, value) : 0
 const emptyPeriod = () => Object.fromEntries(fields.map(field => [field, 0]))
@@ -7,15 +10,14 @@ const cleanPeriod = period => ({
   breaks: safe(period?.breaks ?? (safe(period?.completed) + safe(period?.skipped) + safe(period?.unfinished)))
 })
 
-export const dateKey = time => {
-  const date = new Date(time)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+export { dateKey }
 
 export default class BreakStatistics {
-  constructor ({ data = {}, now = Date.now, onChange = () => {} } = {}) {
+  constructor ({ data = {}, now = Date.now, onChange = () => {}, debtRate = () => 0 } = {}) {
     this.now = now
     this.onChange = onChange
+    this.debtRate = debtRate
+    this.debt = new BreakDebt(data.debt)
     this.data = { version: 2, days: {} }
     for (const [key, period] of Object.entries(data.days ?? {})) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(key)) this.data.days[key] = cleanPeriod(period)
@@ -59,10 +61,27 @@ export default class BreakStatistics {
   advance (at = this.now()) {
     if (at <= this.lastAt) return
     const from = this.lastAt
+    const breakEnd = this.episode?.hasStarted ? this.episode.activeStartedAt + this.episode.duration : Infinity
+    if (this.mode === 'break' && from < breakEnd && breakEnd < at) this.advance(breakEnd)
+    if (this.mode === 'break' && at > breakEnd && !this.idleQualified) this.mode = 'work'
+    if (this.mode === 'break' && at > breakEnd && this.idleQualified) this.mode = 'idle'
+    if (this.lastAt !== from) return this.advance(at)
     this.lastAt = at
-    if (this.mode === 'paused') return
-    const kind = this.mode === 'break' ? this.breakType : this.mode === 'idle' ? 'idle' : 'work'
-    this.span(kind, from, at)
+    const kind = this.mode === 'paused' ? 'paused' : this.mode === 'break' ? this.breakType : this.mode === 'idle' ? 'idle' : 'work'
+    const debtKind = kind === 'work'
+      ? this.episode?.waiting ? 'waiting' : 'work'
+      : kind === 'paused' ? kind : kind === 'mini' && !this.idleQualified ? 'mini' : 'rest'
+    const rate = this.debtRate()
+    let cursor = from
+    while (cursor < at) {
+      const midnight = new Date(cursor)
+      midnight.setHours(24, 0, 0, 0)
+      const end = Math.min(at, midnight.getTime())
+      this.debt.record(debtKind, cursor, end, rate)
+      cursor = end
+    }
+    if (kind !== 'paused') this.span(kind, from, at)
+    if (this.mode === 'break' && this.episode) this.episode.timerMs += at - from
     if (kind === 'work') {
       this.stretchMs += at - from
       const previous = this.workSpans.at(-1)
@@ -72,10 +91,12 @@ export default class BreakStatistics {
     }
   }
 
-  offer ({ type }) {
+  offer ({ type, baseDuration }) {
     this.advance()
-    if (this.episode?.type === type) return
-    this.episode = { type, postpones: 0, hasStarted: false }
+    if (this.episode?.type !== type) {
+      this.episode = { type, baseDuration, postpones: 0, hasStarted: false, timerMs: 0 }
+    }
+    this.episode.waiting = baseDuration > 0
     this.onChange()
   }
 
@@ -83,6 +104,7 @@ export default class BreakStatistics {
     this.advance()
     const episode = this.episode
     if (!episode) return false
+    episode.waiting = false
     episode.postpones++
     const normal = episode.postpones === 1
     if (this.mode !== 'paused') this.mode = this.idleQualified ? 'idle' : 'work'
@@ -94,6 +116,7 @@ export default class BreakStatistics {
   start (type, duration = Infinity) {
     this.advance()
     if (!this.episode || this.mode === 'break') return
+    this.episode.waiting = false
     this.episode.hasStarted = true
     this.episode.activeStartedAt = this.now()
     this.episode.duration = duration
@@ -159,11 +182,12 @@ export default class BreakStatistics {
     this.onChange()
   }
 
-  observeIdle (idleMs, threshold) {
-    this.advance()
+  observeIdle (idleMs, threshold, at = this.now()) {
+    this.advance(at)
     if (this.mode === 'paused') return
     if (idleMs >= threshold && !this.idleQualified) {
-      const idleStart = Math.max(this.startedAt, this.now() - idleMs)
+      const idleStart = Math.max(this.startedAt, at - idleMs)
+      this.debt.recognizeIdle(idleStart, at)
       for (const span of this.workSpans) {
         const from = Math.max(span.from, idleStart)
         if (from < span.to) {
@@ -176,7 +200,7 @@ export default class BreakStatistics {
       this.idleQualified = true
       if (this.mode === 'work') this.mode = 'idle'
       this.onChange()
-    } else if (idleMs < 20000 && this.idleQualified) {
+    } else if (idleMs < Math.min(20000, threshold) && this.idleQualified) {
       this.idleQualified = false
       if (this.mode === 'idle') this.mode = 'work'
       this.onChange()
@@ -203,12 +227,12 @@ export default class BreakStatistics {
     }
     const episode = this.episode
     const kind = episode ? `${episode.type === 'mini' ? 'Mini' : episode.type === 'extended' ? 'Extended' : 'Long'} break` : ''
-    return { current: { kind, postpones: episode?.postpones ?? 0 }, today, week }
+    return { current: { kind, postpones: episode?.postpones ?? 0, debtTotal: Math.max(0, this.debt.balance), debtPayment: episode?.debtPayment ?? 0 }, today, week }
   }
 
   serialize () {
     this.advance()
     this.prune()
-    return JSON.stringify(this.data)
+    return JSON.stringify({ ...this.data, debt: this.debt.serialize() })
   }
 }

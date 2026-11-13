@@ -36,7 +36,7 @@ class NaturalBreaksManager extends EventEmitter {
     clearInterval(this.timer)
     this.timer = null
     desktopIdle.stopMonitoring()
-    if (wasOnIdle) this.emit('idlePeriodFinished', idleTime)
+    if (wasOnIdle) this.emit('idlePeriodFinished', idleTime, Date.now())
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
@@ -47,41 +47,49 @@ class NaturalBreaksManager extends EventEmitter {
     return 0
   }
 
+  get thresholds () {
+    if (this.settings.get('break')) {
+      return {
+        short: this.settings.get('breakDuration'),
+        long: this.settings.get('extendedBreak') ? this.settings.get('extendedBreakDuration') : Infinity
+      }
+    }
+    return getIdleThresholds({
+      naturalBreaksInactivityResetTime: this.settings.get('naturalBreaksInactivityResetTime'),
+      naturalBreaksLongIdleResetTime: this.settings.get('naturalBreaksLongIdleResetTime')
+    })
+  }
+
+  get minimumIdle () {
+    return Math.min(20000, this.thresholds.short, this.thresholds.long)
+  }
+
   _checkIdleTime () {
-    let lastIdleTime = 0
+    let previousAt = 0
     this.timer = setInterval(() => {
+      const now = Date.now()
       const idleTime = this.idleTime
       const previousIdleTime = this.lastObservedIdleTime
+      const minimum = this.minimumIdle
       this.lastObservedIdleTime = idleTime
-      this.emit('idleTimeObserved', idleTime, lastIdleTime)
-      const wasOnIdle = this.isOnNaturalBreak
-      if (!wasOnIdle && idleTime > 20000) {
-        this.isOnNaturalBreak = true
-      }
-      if (this.isOnNaturalBreak && idleTime < 20000) {
+      if (this.isOnNaturalBreak && (idleTime < minimum || now - idleTime > previousAt - previousIdleTime + 1500)) {
         this.isOnNaturalBreak = false
-        const finishedIdleTime = previousIdleTime
         this.isSchedulerCleared = false
-        this.emit('idlePeriodFinished', finishedIdleTime)
-      } else if (this.isOnNaturalBreak) {
-        const { short, long } = getIdleThresholds(this._settingsSnapshot())
-        if (idleTime >= short) {
+        const returnedAt = now - idleTime
+        const elapsed = Math.max(previousIdleTime, returnedAt - (previousAt - previousIdleTime))
+        this.emit('idleTimeObserved', elapsed, previousIdleTime, returnedAt)
+        this.emit('idlePeriodFinished', elapsed, returnedAt)
+      }
+      if (idleTime >= minimum) {
+        this.isOnNaturalBreak = true
+        this.emit('idleTimeObserved', idleTime, previousIdleTime)
+        if (idleTime >= Math.min(this.thresholds.short, this.thresholds.long)) {
           this.isSchedulerCleared = true
           this.emit('idleShortThresholdReached', idleTime)
         }
-        if (idleTime >= long) {
-          this.emit('idleLongThresholdReached', idleTime)
-        }
-      }
-      lastIdleTime = idleTime
+      } else this.emit('idleTimeObserved', idleTime, previousIdleTime)
+      previousAt = now
     }, this.naturalBreaksCheckInterval)
-  }
-
-  _settingsSnapshot () {
-    return {
-      naturalBreaksInactivityResetTime: this.settings.get('naturalBreaksInactivityResetTime'),
-      naturalBreaksLongIdleResetTime: this.settings.get('naturalBreaksLongIdleResetTime')
-    }
   }
 }
 

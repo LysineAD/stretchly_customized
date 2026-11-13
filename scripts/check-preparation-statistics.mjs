@@ -38,8 +38,6 @@ for (const type of ['mini', 'long', 'extended']) {
     breakDuration: 3000,
     extendedBreakDuration: 3000,
     miniBreakAutoStartDelay: 4000,
-    longBreakAutoStartDelay: 4000,
-    extendedBreakAutoStartDelay: 4000,
     microbreakNotification: false,
     breakNotification: false,
     extendedBreakNotification: false
@@ -90,35 +88,39 @@ for (const type of ['mini', 'long', 'extended']) {
         if (first.data[9] > Date.now() && await evaluate('document.querySelector("#start")?.getBoundingClientRect().height > 0')) break
       } catch {}
     }
-    assert.ok(first?.data[9] > Date.now(), type + ': first preparation must appear before its deadline')
+    assert.ok(first?.data[9] > Date.now(), type + ': first preparation must appear before its auto-start deadline')
     assert.equal(first.data[1], null)
-    await evaluate('window.breaks.postponeBreak()')
-    await sleep(800)
-    assert.equal((await targets()).length, 0, 'Postpone hides the reminder')
-    let returned
-    for (let attempt = 0; attempt < 70; attempt++) {
-      await sleep(100)
-      const windows = await targets()
-      if (windows.length) {
+    let returned = evaluate
+    let waiting = first
+    if (type === 'mini') {
+      await evaluate('window.breaks.postponeBreak()')
+      await sleep(800)
+      assert.equal((await targets()).length, 0, 'Postpone hides the reminder')
+      for (let attempt = 0; attempt < 70; attempt++) {
+        await sleep(100)
+        const windows = await targets()
+        if (!windows.length) continue
         returned = await connect(windows[0])
-        if ((await returned(state)).data[9] > Date.now()) break
+        waiting = await returned(state)
+        if (waiting.data[9] > Date.now()) break
       }
+      assert.equal(waiting.statistics.current.postpones, 1)
+      assert.equal(await returned('document.querySelector(".postpone-count").textContent'), '+1')
+    } else {
+      assert.ok(first.data[9] - Date.now() > 18000, 'The larger-break wait is about 20 seconds')
+      assert.equal(waiting.statistics.current.postpones, 0)
     }
-    assert.ok(returned, type + ': postponed reminder returns')
-    const waiting = await returned(state)
     assert.equal(waiting.data[1], null)
-    assert.ok(waiting.data[9] > Date.now(), 'Returned reminders re-arm auto-start')
-    assert.equal(waiting.statistics.current.postpones, 1)
-    assert.equal(await returned('document.querySelector(".postpone-count").textContent'), '+1')
+    assert.ok(waiting.data[9] > Date.now())
     assert.equal(await returned('document.querySelectorAll(".break-statistics-table tbody tr").length'), 4)
     assert.equal(await returned('document.querySelectorAll("#start-hint,.break-lifetime,.break-statistics-caption,.break-statistics-heading").length'), 0)
     let running
-    for (let attempt = 0; attempt < 60; attempt++) {
+    for (let attempt = 0; attempt < 220; attempt++) {
       await sleep(100)
       running = await returned(state)
       if (running.data[1] !== null) break
     }
-    assert.ok(running.data[1] >= waiting.data[9], 'A returned reminder auto-starts without clicking Start')
+    assert.ok(running.data[1] >= waiting.data[9], 'A reminder auto-starts without clicking Start')
     let saved, period
     for (let attempt = 0; attempt < 70; attempt++) {
       await sleep(100)
@@ -130,8 +132,9 @@ for (const type of ['mini', 'long', 'extended']) {
     assert.equal(period.withoutDelay, 1)
     assert.ok(period.breakMs >= 2900)
     assert.equal(saved.lifetime, undefined)
-    reports.push({ type, normalFirstPostpone: true, returnedAutoStart: true, saved: period })
-    console.log(type + ': recurring auto-start, +1 badge, minimal statistics and seven-day storage passed')
+    assert.ok(Number.isFinite(saved.debt.balance))
+    reports.push({ type, postponed: type === 'mini', automaticStart: true, saved: period })
+    console.log(type + ': auto-start, minimal statistics and persisted debt passed')
   } finally {
     sockets.forEach(socket => socket.close())
     child.kill()

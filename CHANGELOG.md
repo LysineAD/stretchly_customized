@@ -5,6 +5,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
+
+- Show total debt and the current break’s assigned repayment in the break window, and reduce the centered notice to 220 × 44 pixels.
+
+- Forecast break shortages within the current 120 active minutes and spread repayment across the next three Long or Extended breaks in proportion to their durations.
+- Reconcile qualifying AFK with a nearby scheduled break, pause the next interval until return, and preserve unpaid rest across restarts.
+- Add a compact one-minute notice, 20-second auto-start, capped increasing postponements, and a shortcut to take the next Long or Extended break early.
+
 ### Customized simplification — 2026-10-20
 - Restore auto-start on every postponed return; manual Start can still begin sooner.
 - Give advice the full-width main area. Remove status/scheduling text, the current-work headline, lifetime footer, break-type breakdowns, separate postpone/skip metrics, longest stretch and planned interval.

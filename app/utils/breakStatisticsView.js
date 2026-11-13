@@ -32,6 +32,10 @@ export function createBreakStatisticsView (container = document.querySelector('.
   root.setAttribute('aria-label', 'Break statistics')
   root.innerHTML = `
     <div class="break-type" data-stat="break-kind"></div>
+    <div class="break-debt">
+      <span>Total time debt <strong data-stat="debt-total"></strong></span>
+      <span>Debt in this break <strong data-stat="debt-payment"></strong></span>
+    </div>
     <table class="break-statistics-table">
       <thead><tr><th scope="col"></th><th scope="col">Today</th><th scope="col">7-day avg/day</th></tr></thead>
       <tbody>
@@ -74,6 +78,8 @@ export function createBreakStatisticsView (container = document.querySelector('.
     update (snapshot = {}) {
       const current = snapshot.current ?? {}
       set('break-kind', current.kind ?? '')
+      set('debt-total', formatDuration(current.debtTotal))
+      set('debt-payment', formatDuration(current.debtPayment))
       const count = Math.floor(numeric(current.postpones))
       setText(badge, `+${count}`)
       badge.classList.toggle('hidden', count === 0)

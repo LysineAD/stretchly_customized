@@ -8,7 +8,7 @@ vi.mock('../app/utils/naturalBreaksManager.js', async () => ({ default: (await i
 vi.mock('../app/utils/dndManager.js', async () => ({ default: (await import('node:events')).EventEmitter }))
 vi.mock('../app/utils/appExclusionsManager.js', async () => ({ default: (await import('node:events')).EventEmitter }))
 
-describe('early preparation and recurring auto-start after Postpone', () => {
+describe('break reminders and auto-start', () => {
   const planners = []
   const controllers = []
   beforeEach(() => {
@@ -36,7 +36,7 @@ describe('early preparation and recurring auto-start after Postpone', () => {
     }
     const prefix = type === 'mini' ? 'microbreak' : type === 'extended' ? 'extendedBreak' : 'break'
     const eventBase = prefix[0].toUpperCase() + prefix.slice(1)
-    const delayKey = type === 'mini' ? 'miniBreakAutoStartDelay' : type === 'extended' ? 'extendedBreakAutoStartDelay' : 'longBreakAutoStartDelay'
+    const delay = type === 'mini' ? values.miniBreakAutoStartDelay : 20000
     const planner = new BreaksPlanner({ get: key => values[key] })
     planner.breakNumber = type === 'mini' ? 0 : 1
     planner.longBreakNumber = type === 'extended' ? 2 : 0
@@ -44,97 +44,82 @@ describe('early preparation and recurring auto-start after Postpone', () => {
     const windows = [{ isDestroyed: () => false, webContents: { send: vi.fn() } }]
     const start = vi.fn(() => planner.emit(prefix + 'Started', false))
     const show = vi.fn(() => {
-      controller.wait(type, windows, start, values[delayKey], planner.postponedReminder ? null : planner.breakDueAt)
+      controller.wait(type, windows, start, delay, type === 'mini' && !planner.postponedReminder ? planner.breakDueAt : null)
       planner.waitForBreakStart(type)
     })
     planner.on('start' + eventBase, show)
     planner.nextBreak()
     planners.push(planner)
     controllers.push(controller)
-    return { values, prefix, eventBase, delayKey, planner, controller, show, start, windows }
+    return { values, prefix, delay, planner, controller, show, start, windows }
   }
 
-  it.each(['mini', 'long', 'extended'])('shows %s early and starts at the original scheduled deadline', type => {
-    const f = setup(type)
+  it('keeps early preparation for Mini breaks', () => {
+    const f = setup('mini')
     const due = f.planner.breakDueAt
-    const lead = f.values[f.delayKey]
-    vi.advanceTimersByTime(1200000 - lead - 1)
+    vi.advanceTimersByTime(1200000 - f.delay)
+    expect(f.show).toHaveBeenCalledOnce()
+    f.controller.arm()
+    expect(f.controller.session.deadline).toBe(due)
+    vi.advanceTimersByTime(f.delay)
+    expect(f.start).toHaveBeenCalledOnce()
+  })
+
+  it.each(['long', 'extended'])('warns 60 seconds before a %s break and starts 20 seconds after its window opens', type => {
+    const f = setup(type, true)
+    const notify = vi.fn()
+    f.planner.on(type === 'long' ? 'startBreakNotification' : 'startExtendedBreakNotification', notify)
+    vi.advanceTimersByTime(1140000)
+    expect(notify).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(59999)
     expect(f.show).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
     expect(f.show).toHaveBeenCalledOnce()
-    expect(f.start).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(2000)
     f.controller.arm()
-    expect(f.controller.session.deadline).toBe(due)
-    vi.advanceTimersByTime(lead - 2001)
+    vi.advanceTimersByTime(19999)
     expect(f.start).not.toHaveBeenCalled()
     vi.advanceTimersByTime(1)
-    expect(Date.now()).toBe(due)
     expect(f.start).toHaveBeenCalledOnce()
-    expect(f.planner.scheduler.timeLeft).toBe(f.values[f.prefix + 'Duration'])
   })
 
-  it.each(['mini', 'long', 'extended'])('auto-starts %s after every postponement with a fresh wait', type => {
+  it.each([['long', [2, 4, 6]], ['extended', [4, 6, 8]]])('increments %s postponements and stops at the configured cap', (type, delays) => {
     const f = setup(type)
-    const lead = f.values[f.delayKey]
-    const due = f.planner.breakDueAt
-    vi.advanceTimersByTime(1200000 - lead)
-    f.controller.arm()
-    vi.advanceTimersByTime(6000)
-    for (let count = 1; count <= 3; count++) {
+    vi.advanceTimersByTime(1200000)
+    for (const minutes of delays) {
+      f.controller.arm()
       f.controller.clear()
       f.planner.postponeCurrentBreak()
-      expect(f.planner.postponesNumber).toBe(count)
-      expect(f.planner.breakDueAt).toBe(due)
-      vi.advanceTimersByTime(lead)
-      f.controller.arm()
-      expect(f.controller.session.deadline).toBe(Date.now() + lead)
-      vi.advanceTimersByTime(lead - 1)
-      expect(f.controller.session.started).toBeNull()
-      vi.advanceTimersByTime(1)
-      expect(f.controller.session.started).toBe(Date.now())
-      expect(f.planner.scheduler.timeLeft).toBe(f.values[f.prefix + 'Duration'])
+      expect(f.planner.timeToNextBreak).toBe(minutes * 60000)
+      vi.advanceTimersByTime(minutes * 60000)
     }
-    expect(f.start).toHaveBeenCalledTimes(3)
-  })
-
-  it('keeps the original notification lead even when the early window appears first', () => {
-    const f = setup('long', true)
-    const notify = vi.fn()
-    f.planner.on('startBreakNotification', notify)
-    vi.advanceTimersByTime(1140000)
-    expect(f.show).toHaveBeenCalledOnce()
+    expect(f.planner.canPostponeLargerBreak).toBe(false)
+    expect(f.planner.postponeCurrentBreak()).toBe(false)
     f.controller.arm()
-    vi.advanceTimersByTime(30000)
-    expect(notify).toHaveBeenCalledWith(false)
-    expect(f.start).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(30000)
+    vi.advanceTimersByTime(20000)
     expect(f.start).toHaveBeenCalledOnce()
   })
 
-  it.each(['mini', 'long', 'extended'])('clears a pending notification when %s is started before it', type => {
-    const f = setup(type, true)
-    const notify = vi.fn()
-    f.planner.on('start' + f.eventBase + 'Notification', notify)
-    vi.advanceTimersByTime(1200000 - f.values[f.delayKey])
-    f.controller.start(type, f.windows[0].webContents)
-    vi.advanceTimersByTime(f.values[f.delayKey])
-    expect(f.start).toHaveBeenCalledOnce()
-    expect(notify).not.toHaveBeenCalled()
+  it('starts the upcoming Extended break early, even if a Mini reminder is next', () => {
+    const f = setup('mini')
+    f.planner.longBreakNumber = 2
+    const show = vi.fn()
+    f.planner.on('startExtendedBreak', show)
+    f.planner.startLargerBreak()
+    vi.advanceTimersByTime(0)
+    expect(show).toHaveBeenCalledOnce()
+    expect(f.planner.longBreakNumber).toBe(3)
   })
 
-  it('clears an outstanding original auto-start when Postpone replaces the reminder', () => {
+  it('holds an already visible countdown while checking AFK', () => {
     const f = setup('long')
-    vi.advanceTimersByTime(1140000)
+    vi.advanceTimersByTime(1200000)
     f.controller.arm()
-    f.controller.clear()
-    f.planner.postponeCurrentBreak()
-    vi.advanceTimersByTime(60000)
-    f.controller.arm()
+    vi.advanceTimersByTime(5000)
+    f.controller.pause()
+    vi.advanceTimersByTime(30000)
     expect(f.start).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(59999)
-    expect(f.start).not.toHaveBeenCalled()
-    vi.advanceTimersByTime(1)
+    f.controller.resume()
+    vi.advanceTimersByTime(15000)
     expect(f.start).toHaveBeenCalledOnce()
   })
 })
