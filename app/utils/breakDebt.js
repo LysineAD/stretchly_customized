@@ -4,13 +4,28 @@ export const workBlock = 120 * 60000
 const timerTolerance = 5000
 const finite = value => Number.isFinite(value) ? value : 0
 
+// One full larger-break cycle lasts
+//   extendedBreakInterval x microbreakInterval x (breakInterval + 1)
+// active minutes and contains one Extended plus (extendedBreakInterval - 1)
+// Long breaks. Owed rest per active minute is that cycle's larger-break total
+// divided by that cycle's length, so a skipped or postponed break makes the
+// ledger demand exactly the rest the untouched schedule would have offered.
+// Dividing by a fixed 120 minutes instead would only be correct for one
+// particular schedule and under- or over-credits every other one.
 export function breakDebtRate (settings) {
   if (!settings.get('break')) return 0
-  const count = settings.get('extendedBreak') ? Math.min(12, Math.max(1, Math.floor(finite(settings.get('extendedBreakInterval'))) || 3)) : 3
   const normal = Math.max(1, finite(settings.get('breakDuration')))
   const extended = Math.max(1, finite(settings.get('extendedBreakDuration')))
+  const count = settings.get('extendedBreak')
+    ? Math.max(1, Math.floor(finite(settings.get('extendedBreakInterval'))) || 3)
+    : 3
   const total = settings.get('extendedBreak') ? (count - 1) * normal + extended : count * normal
-  return total / workBlock
+  const interval = finite(settings.get('microbreakInterval'))
+  const every = Math.max(1, Math.floor(finite(settings.get('breakInterval'))) + 1)
+  const cycle = count * interval * every
+  // Incomplete settings objects (tests, inspector probes) keep the legacy
+  // 120-minute denominator instead of producing an infinite rate.
+  return cycle > 0 ? total / cycle : total / workBlock
 }
 
 export default class BreakDebt {

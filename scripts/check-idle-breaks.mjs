@@ -83,6 +83,12 @@ try {
         if (reports.thresholds.short !== 4 * minute || reports.thresholds.long !== 12 * minute) {
           throw Error('idle thresholds are not derived from the break durations')
         }
+        reports.rate = breakDebtRate(settings)
+        const cycleWork = 2 * 20 * minute * 2
+        const cycleRest = 4 * minute + 12 * minute
+        if (Math.abs(reports.rate - cycleRest / cycleWork) > 1e-9) {
+          throw Error('packaged break debt rate is not the schedule’s own larger-break average')
+        }
         let finished = null
         planner.on('idleRecoveryFinished', payload => { finished = payload })
         planner.on('startBreak', () => planner.emit('breakStarted', false, values.breakDuration))
@@ -122,10 +128,11 @@ try {
   })
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
   assert.equal(result.result.value.thresholds.short, 240000)
+  assert.ok(Math.abs(result.result.value.rate - 0.2) < 1e-9)
   assert.equal(result.result.value.afk.fulfilled, true)
   assert.equal(result.result.value.skip.after, result.result.value.skip.before)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
-  console.log('Packaged idle thresholds, AFK-covered break and Skip debt neutrality checks passed.')
+  console.log('Packaged idle thresholds, debt rate, AFK-covered break and Skip debt neutrality checks passed.')
 } finally {
   socket?.close()
   child.kill()

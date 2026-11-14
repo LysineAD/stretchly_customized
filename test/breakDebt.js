@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import BreakDebt, { breakDebtRate } from '../app/utils/breakDebt.js'
+import BreakDebt, { breakDebtRate, workBlock } from '../app/utils/breakDebt.js'
 import BreakStatistics from '../app/utils/breakStatistics.js'
 
 const minute = 60000
 const at = new Date(2026, 10, 13, 9).getTime()
+// A fixed synthetic rate for the ledger mechanics below. breakDebtRate()
+// itself is schedule-derived and is tested separately.
 const rate = 21 / 120
 const projected = (times, minutes = [3, 3, 15]) => times.map((after, i) => ({
   after: after * minute,
@@ -11,9 +13,67 @@ const projected = (times, minutes = [3, 3, 15]) => times.map((after, i) => ({
 }))
 
 describe('break debt', () => {
-  it.each([[2, 5, 9], [4, 16, 24], [3, 21, 27]])('derives the rate from Long %i and Extended %i', (normal, extended, total) => {
-    const settings = { break: true, extendedBreak: true, extendedBreakInterval: 3, breakDuration: normal * minute, extendedBreakDuration: extended * minute }
-    expect(breakDebtRate({ get: key => settings[key] })).toBe(total / 120)
+  it.each([
+    // Mini interval, larger-break spacing, Extended interval, Long, Extended, cycle rest, cycle work
+    [20, 1, 2, 4, 12, 16, 80],
+    [20, 1, 3, 2, 5, 9, 120],
+    [15, 1, 3, 3, 15, 21, 90],
+    [10, 2, 3, 3, 15, 21, 90]
+  ])('derives r from one whole larger-break cycle %j', (miniInterval, breakInterval, extendedInterval, normal, extended, rest, cycle) => {
+    const settings = {
+      break: true,
+      microbreakInterval: miniInterval * minute,
+      breakInterval,
+      extendedBreak: true,
+      extendedBreakInterval: extendedInterval,
+      breakDuration: normal * minute,
+      extendedBreakDuration: extended * minute
+    }
+    expect(breakDebtRate({ get: key => settings[key] })).toBeCloseTo(rest / cycle, 12)
+  })
+
+  it('matches the live profile’s ideal larger-break average', () => {
+    const settings = {
+      break: true,
+      microbreakInterval: 20 * minute,
+      breakInterval: 1,
+      extendedBreak: true,
+      extendedBreakInterval: 2,
+      breakDuration: 4 * minute,
+      extendedBreakDuration: 12 * minute
+    }
+    expect(breakDebtRate({ get: key => settings[key] })).toBeCloseTo((4 + 12) / (2 * 40), 12)
+  })
+
+  it('tracks the schedule when the Mini interval or larger-break spacing changes', () => {
+    const base = {
+      break: true,
+      microbreakInterval: 20 * minute,
+      breakInterval: 1,
+      extendedBreak: false,
+      extendedBreakInterval: 3,
+      breakDuration: 4 * minute,
+      extendedBreakDuration: 12 * minute
+    }
+    const r = overrides => breakDebtRate({ get: key => ({ ...base, ...overrides })[key] })
+    expect(r({ microbreakInterval: 40 * minute })).toBeCloseTo(r({}) / 2, 12)
+    expect(r({ breakInterval: 2 })).toBeCloseTo(r({}) * 2 / 3, 12)
+  })
+
+  it('has no debt when larger breaks are disabled', () => {
+    const settings = { break: false, microbreakInterval: 20 * minute, breakDuration: 4 * minute }
+    expect(breakDebtRate({ get: key => settings[key] })).toBe(0)
+  })
+
+  it('keeps a finite legacy rate when schedule intervals are missing', () => {
+    const settings = {
+      break: true,
+      extendedBreak: true,
+      extendedBreakInterval: 3,
+      breakDuration: 3 * minute,
+      extendedBreakDuration: 15 * minute
+    }
+    expect(breakDebtRate({ get: key => settings[key] })).toBe(21 * minute / workBlock)
   })
 
   it('sees an early reset in the current work block and assigns 1:1:5 shares', () => {
@@ -115,15 +175,24 @@ describe('break debt', () => {
   })
 })
 
-describe('break debt audit (current cumulative-ledger model)', () => {
+describe('break debt audit (schedule-aligned cumulative ledger)', () => {
   it.each([
     [{ break: false }, 0],
-    [{ break: true, extendedBreak: false, breakDuration: 5 * minute }, 15 * minute / (120 * minute)],
-    [{ break: true, extendedBreak: true, extendedBreakInterval: 3, breakDuration: 2 * minute, extendedBreakDuration: 5 * minute }, 9 * minute / (120 * minute)],
-    [{ break: true, extendedBreak: true, extendedBreakInterval: 2, breakDuration: 4 * minute, extendedBreakDuration: 12 * minute }, 16 * minute / (120 * minute)]
+    [{ extendedBreak: false, breakDuration: 5 * minute }, (5 * minute) / (40 * minute)],
+    [{ extendedBreakInterval: 3, breakDuration: 2 * minute, extendedBreakDuration: 5 * minute }, (9 * minute) / (3 * 40 * minute)],
+    [{ extendedBreakInterval: 2, breakDuration: 4 * minute, extendedBreakDuration: 12 * minute }, (16 * minute) / (2 * 40 * minute)]
   ])('derives the live rate %j as %d rest per active minute', (overrides, expected) => {
-    const settings = { break: true, extendedBreak: true, extendedBreakInterval: 3, breakDuration: 3 * minute, extendedBreakDuration: 15 * minute, ...overrides }
-    expect(breakDebtRate({ get: key => settings[key] })).toBeCloseTo(expected)
+    const settings = {
+      break: true,
+      microbreakInterval: 20 * minute,
+      breakInterval: 1,
+      extendedBreak: true,
+      extendedBreakInterval: 3,
+      breakDuration: 3 * minute,
+      extendedBreakDuration: 15 * minute,
+      ...overrides
+    }
+    expect(breakDebtRate({ get: key => settings[key] })).toBeCloseTo(expected, 12)
   })
 
   it('a checkpoint restores every ledger field, including postponement and recent spans', () => {

@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+- Align the break-debt rate with the schedule's own average rest: one Extended cycle of Long/Extended time is now divided by that cycle's real active length (`extendedBreakInterval × microbreakInterval × (breakInterval + 1)`) instead of a fixed 120 minutes. Skips and postpones are therefore repaid into later breaks so a day still reaches the ideal average rest for any Mini/Long/Extended settings. The 120 active minutes remain only the forecast horizon.
+- Turn `scripts/check-break-average.mjs` into an enforcing check: it now fails on a rate mismatch, a conservation violation or a day that misses the ideal average rest, instead of only printing the gap.
+- Fix `scripts/check-preparation-statistics.mjs` reporting spurious renderer timeouts / a missing auto-start: it now reconnects to recreated break windows, and its synthetic larger-break schedule is longer than the fixed 20-second auto-start wait instead of firing the next break first.
+- Verify the packaged build's debt rate in `scripts/check-idle-breaks.mjs` and cover the schedule-derived rate in `test/breakDebt.js`.
 - Fix tray **Skip current break** wiping time debt: skipping no longer credits the break window as rest, clears the postponement balance or zeroes the repayment plan. The skip still counts against Without delay %, and the outstanding debt is re-forecast onto the next larger breaks.
 - Fix the countdown after an AFK that outlasts a running Long/Extended break: the break is now fulfilled and the next Mini interval restarts at its full length from the moment of return, instead of continuing from when the break ended (which showed 18 instead of 20 minutes).
 - Suppress a false "return" when the OS idle counter restarts during an absence (screen lock / session glitch); a return is confirmed on the next poll, and the absence length is anchored to its original wall-clock start.

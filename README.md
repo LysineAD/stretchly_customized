@@ -176,6 +176,8 @@ Enable **Monitor system idle time** to credit qualifying AFK. The configured Lon
 
 Every break window gives the tip the main full-width area and shows only **Break time, Without delay %, Average stretch and Computer use**, in **Today** and **7-day avg/day** columns. The latter divides time totals by seven; rates and average stretch use their seven-day samples. A small **Postpone +1, +2** badge counts presses. Zero or one Postpone counts as without delay; additional postponements, skips and early endings lower that one percentage. History and its backup retain only seven calendar dates. Lifetime, longest stretch, type breakdowns, scheduling text and the large current-work headline are removed. See [statistics and break debt definitions](STATISTICS.md).
 
+Unpaid rest is tracked as **break debt**. Each active minute owes the schedule's own average Long/Extended rest, so skipped or postponed breaks are repaid into later ones and the day still reaches its ideal average rest. Tray **Skip current break** is debt-neutral: it does not erase the outstanding balance.
+
 Strict mode hides on-window Skip. The tray always remains available for intentional **Skip current break**, Pause, Preferences and Quit. Preferences uses scrolling and two columns, switching to one column on narrow windows.
 
 Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), retaining the original Extended fork history. See the [customization inventory](CUSTOMIZATIONS.md) for all retained features and the [quick update/build guide](UPDATING.md) for merging upstream, verification and replacing the ready-to-run app in `D:\Projects\Stretchly_Customized`. This customization was AI-assisted.
