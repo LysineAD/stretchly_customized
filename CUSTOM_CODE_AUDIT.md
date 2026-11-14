@@ -74,3 +74,29 @@ Scope: two reported bugs (tray Skip wiping time debt, and an AFK return showing 
 - `.husky/pre-commit` pipes filenames into `xargs`; with a ~29 KB environment (mainly `CODEBUDDY_MCP_CONFIG`) Git Bash `xargs` aborts at startup with `bc_ctl.arg_max >= LINE_MAX`. Use `env -u CODEBUDDY_MCP_CONFIG git commit -m "..."`; never `--no-verify` / `HUSKY=0`.
 - Packaged checks need `env -u ELECTRON_RUN_AS_NODE`; vitest needs `--coverage.enabled=false --coverage.clean=false` to avoid the sandbox bulk-delete guard.
 - Documentation-only edits do not require a rebuild: markdown is not runtime code, and the delivered folder carries readable copies at its top level. Verification scope should follow whether a change participates in runtime behavior, not whether a repository file was touched.
+
+## Work record — 2026-11-14 (debt persistence and proportional repayment)
+
+Two user-reported bugs, both reproduced with a pure-Node script (no App launch): Total time debt fell to zero after Quit/restart, and a few minutes of postpone debt were charged entirely to the first Long break instead of being spread over the next three.
+
+### Root causes
+
+- `BreakDebt` has seven state fields. `serialize()` wrote only `balance`, `work`, `day` and `plan`; `postponement` was never saved and the constructor hard-set it to `null`. `snapshot().current.debtTotal` is `Math.max(0, balance, postponement?.earned ?? 0)`, so the visible debt after postponing was held up by an in-memory value that vanished on restart. A pure-Node trace showed 2.40 min before restart → 0.40 min after (or 0.00 min when earlier rest had left a credit). The live profile file confirmed the missing `postponement` key; its `plan` was `[73874, 73874, 221622]`, exactly 1:1:3.
+- `forecast()` computed a correct proportional plan (`[0.8, 0.8, 2.4]` for 4/4/12) and then returned `Math.max(this.plan[0], this.postponement?.earned ?? 0)` as the payment. That `Math.max` bypassed the plan and handed the whole postponement debt (60% of the three-break total) to the returning break. It came from an earlier intentional rule, documented as "adds at least its earned rest to the returning break", which contradicted the three-break proportional feature list.
+- `main.js` `idleRecoveryFinished` called `debt.replan()` without arguments, clearing the postponement along with the plan on an AFK-fulfilled break or AFK reset.
+
+### Changes (commit `fix(breaks): persist postponement debt and spread repayments`)
+
+- `app/utils/breakDebt.js`: `serialize()` now emits `postponement: { from, earned }`; the constructor restores it with finite/positive sanitising, so older profiles without the field start with none. `forecast()` uses `required = Math.max(shortage, postponement?.earned ?? 0)` and returns `payment = this.plan[0]`, so postpone work is still guaranteed to be repaid but is distributed by the three larger breaks' base lengths. `checkpoint()` / `rollback()` already covered the new persisted field; `resolve()`, `replan()`, `rollDay()`, `recognizeIdle()` and `breakDebtRate()` are unchanged.
+- `app/main.js`: `idleRecoveryFinished` uses `replan({ preserveDelay: true })`.
+- `test/breakDebt.js`: the "adds extra work at the first returned break" expectation changed from 105000 to 75000 (1.75 min split 15:3:3) and now asserts the full `[75000, 15000, 15000]` plan. Five new tests cover restart round-trips with and without an earlier credit, malformed persisted postponements, replan preservation and the 1:1:3 split.
+- `scripts/check-break-average.mjs`: `let debt` is rebuilt from `serialize()` after every simulated cycle, and the gate now also fails on any restart loss or any payment exceeding `plan[0]`. Seven assertions total.
+- `scripts/check-idle-breaks.mjs`: the isolated inspector now also reloads the packaged `BreakDebt` from a saved snapshot and asserts the restored postponement, unchanged visible debt, `payment === plan[0]` and the 1:1:3 ratio.
+- Docs: `STATISTICS.md`, `CUSTOMIZATIONS.md`, `README.md`, `CHANGELOG.md`, `UPDATING.md`.
+- Not persisted by design: `recent` spans (bounded to the last hour, and `observeIdle` clamps to `startedAt`), `previousDay` (reconstructed by `rollDay` on the next `record`), and `episode.debtPayment` (the break window itself is not restored). The live profile's already-lost postponement amount is not reconstructed from invented numbers.
+
+### Verification and delivery
+
+- `npm run lint` clean; full vitest 462/462; model gate seven PASS (rate mismatch 0.0%, conservation 0, restart losses 0, over-charged breaks 0, live coverage 105.6% incl. carried debt, unpaid 2.4%).
+- Packaged checks: `check-packaged-start.mjs`, `check-idle-breaks.mjs` (including the new packaged debt assertions) and source `check-statistics.mjs`. `check-preparation-statistics.mjs` is intentionally not a delivery gate for this round: it launches full-screen break windows and touches no code changed here.
+- Rebuilt into `dist/nov14-debtfix/win-unpacked` and copied over `D:/Projects/Stretchly_Customized`; `BUILD_INFO.json` updated with the hashes, commit, test count and checks actually run. Local commit on `trunk`, **not pushed**.

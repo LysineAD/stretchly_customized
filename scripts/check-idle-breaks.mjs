@@ -66,7 +66,7 @@ try {
       const { default: BreaksPlanner } = require(join(app.getAppPath(), 'app/breaksPlanner.js'))
       const { default: defaults } = require(join(app.getAppPath(), 'app/utils/defaultSettings.js'))
       const { default: BreakStatistics } = require(join(app.getAppPath(), 'app/utils/breakStatistics.js'))
-      const { breakDebtRate } = require(join(app.getAppPath(), 'app/utils/breakDebt.js'))
+      const { default: BreakDebt, breakDebtRate } = require(join(app.getAppPath(), 'app/utils/breakDebt.js'))
       const minute = 60000
       const values = {
         ...defaults, naturalBreaks: false, monitorDnd: false,
@@ -123,6 +123,37 @@ try {
       stats.skip()
       reports.skip = { before, after: stats.debt.balance }
       if (stats.debt.balance !== before) throw Error('Skip changed the outstanding time debt')
+
+      // A Quit/restart must keep the visible debt and the postponement, and a
+      // single break must never be charged the whole three-break plan.
+      const ledger = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings) })
+      ledger.offer({ type: 'long', baseDuration: 4 * minute })
+      clock += 10000
+      ledger.postpone()
+      ledger.debt.postpone(clock)
+      clock += 12 * minute
+      ledger.offer({ type: 'long', baseDuration: 4 * minute })
+      const upcoming = [0, 40, 80].map((after, i) => ({
+        after: after * minute,
+        duration: [4, 4, 12][i] * minute
+      }))
+      const payment = ledger.debt.forecast(breakDebtRate(settings), upcoming)
+      const visible = ledger.snapshot().current.debtTotal
+      const saved = JSON.parse(ledger.serialize())
+      const restoredLedger = new BreakDebt(saved.debt)
+      const restarted = new BreakStatistics({ data: saved, now: () => clock, debtRate: () => breakDebtRate(settings) })
+      reports.debt = {
+        payment,
+        plan: ledger.debt.plan,
+        visible,
+        earned: saved.debt.postponement?.earned ?? 0,
+        restored: restoredLedger.postponement !== null,
+        afterRestart: restarted.snapshot().current.debtTotal
+      }
+      if (!reports.debt.restored || reports.debt.earned === 0) throw Error('the packaged build lost the postponement debt on restart')
+      if (Math.abs(reports.debt.afterRestart - reports.debt.visible) > 1) throw Error('the packaged build lost the visible time debt on restart')
+      if (payment > ledger.debt.plan[0] + 1) throw Error('the packaged build charged one break more than its three-break plan slot')
+      if (Math.abs(ledger.debt.plan[2] / ledger.debt.plan[0] - 3) > 0.01) throw Error('the packaged build did not split the plan 1:1:3 by Long/Extended length')
       return reports
     })()`
   })
@@ -131,8 +162,11 @@ try {
   assert.ok(Math.abs(result.result.value.rate - 0.2) < 1e-9)
   assert.equal(result.result.value.afk.fulfilled, true)
   assert.equal(result.result.value.skip.after, result.result.value.skip.before)
+  assert.equal(result.result.value.debt.restored, true)
+  assert.equal(result.result.value.debt.afterRestart, result.result.value.debt.visible)
+  assert.ok(Math.abs(result.result.value.debt.payment - result.result.value.debt.plan[0]) <= 1)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
-  console.log('Packaged idle thresholds, debt rate, AFK-covered break and Skip debt neutrality checks passed.')
+  console.log('Packaged idle thresholds, debt rate, AFK-covered break, Skip neutrality and debt restart checks passed.')
 } finally {
   socket?.close()
   child.kill()

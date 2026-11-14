@@ -36,7 +36,12 @@ export default class BreakDebt {
     this.plan = Array.from({ length: 3 }, (_, i) => Math.max(0, finite(data.plan?.[i])))
     this.recent = []
     this.previousDay = null
-    this.postponement = null
+    // An outstanding postponement is unpaid rest, so it must survive a Quit.
+    // Older profiles have no such field and start with none.
+    const delay = data.postponement
+    this.postponement = delay && Number.isFinite(delay.earned)
+      ? { from: finite(delay.from), earned: Math.max(0, finite(delay.earned)) }
+      : null
   }
 
   rollDay (time) {
@@ -110,7 +115,12 @@ export default class BreakDebt {
     const remaining = Math.max(0, end - this.work)
     const baseRest = upcoming.reduce((sum, { after, duration }) => after <= remaining + timerTolerance ? sum + duration : sum, 0)
     const shortage = Math.max(0, this.balance + remaining * rate - baseRest)
-    const required = shortage
+    // Work during a postponement is already in `balance`, but a credit from
+    // earlier rest can hide it from `shortage`. Keep that earned amount as a
+    // floor for the TOTAL owed, then let the weights below spread it over the
+    // next three larger breaks. Charging it all to the returning break would
+    // bypass the proportional Long/Extended repayment plan.
+    const required = Math.max(shortage, this.postponement?.earned ?? 0)
     const weights = upcoming.slice(0, 3).map(entry => entry.duration)
     const planned = this.plan.reduce((sum, value) => sum + value, 0)
     if (required < planned && planned > 0) {
@@ -119,7 +129,7 @@ export default class BreakDebt {
       const total = weights.reduce((sum, weight) => sum + weight, 0)
       this.plan = weights.map((weight, index) => this.plan[index] + (required - planned) * weight / total)
     }
-    const payment = Math.max(this.plan[0], this.postponement?.earned ?? 0)
+    const payment = this.plan[0]
     return payment > 0 ? Math.max(1, Math.round(payment)) : 0
   }
 
@@ -162,6 +172,14 @@ export default class BreakDebt {
   }
 
   serialize () {
-    return { balance: this.balance, work: this.work, day: this.day, plan: this.plan }
+    return {
+      balance: this.balance,
+      work: this.work,
+      day: this.day,
+      plan: this.plan,
+      postponement: this.postponement
+        ? { from: this.postponement.from, earned: this.postponement.earned }
+        : null
+    }
   }
 }

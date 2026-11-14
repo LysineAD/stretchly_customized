@@ -86,17 +86,21 @@ describe('break debt', () => {
     expect(debt.plan[2]).toBeCloseTo(5 * debt.plan[0])
   })
 
-  it('adds extra work at the first returned break without duplicating it in the balance', () => {
+  it('spreads postponement work proportionally instead of charging it all to the returning break', () => {
     const debt = new BreakDebt()
     debt.record('work', at, at + 120 * minute, rate)
     debt.record('rest', at + 120 * minute, at + 126 * minute, rate)
     debt.postpone(at + 126 * minute)
     debt.record('work', at + 126 * minute, at + 136 * minute, rate)
     expect(debt.balance).toBe(16.75 * minute)
-    expect(debt.forecast(rate, [
+    // 1.75 min earned, split 15:3:3 over the next three larger breaks.
+    const payment = debt.forecast(rate, [
       ...projected([0, 30, 60], [15, 3, 3]),
       { after: 90 * minute, duration: 15 * minute }
-    ])).toBe(105000)
+    ])
+    expect(payment).toBe(75000)
+    expect(debt.plan).toEqual([75000, 15000, 15000])
+    expect(payment).toBeLessThan(debt.postponement.earned)
     debt.record('rest', at + 136 * minute, at + 151 * minute, rate)
     expect(debt.balance).toBe(1.75 * minute)
   })
@@ -239,5 +243,77 @@ describe('break debt audit (schedule-aligned cumulative ledger)', () => {
     expect(debt.postponement).toBeNull()
     debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
     expect(debt.plan[0]).toBeGreaterThan(0)
+  })
+
+  it('keeps the visible debt, postponement and plan across a restart', () => {
+    let now = at
+    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    now += 10000
+    stats.postpone()
+    stats.debt.postpone(now)
+    now += 12 * minute
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    stats.debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const visible = stats.snapshot().current.debtTotal
+    const saved = JSON.parse(stats.serialize())
+    expect(saved.debt.postponement.earned).toBeGreaterThan(0)
+
+    const restarted = new BreakStatistics({ data: saved, now: () => now, debtRate: () => rate })
+    expect(restarted.debt.postponement?.earned).toBe(saved.debt.postponement.earned)
+    expect(restarted.debt.plan).toEqual(saved.debt.plan)
+    expect(restarted.debt.balance).toBe(saved.debt.balance)
+    expect(restarted.snapshot().current.debtTotal).toBe(visible)
+  })
+
+  it('keeps a postponement debt across a restart even when earlier rest left a credit', () => {
+    let now = at
+    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
+    stats.debt.balance = -10 * minute
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    now += 10000
+    stats.postpone()
+    stats.debt.postpone(now)
+    now += 12 * minute
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    const visible = stats.snapshot().current.debtTotal
+    const restarted = new BreakStatistics({
+      data: JSON.parse(stats.serialize()), now: () => now, debtRate: () => rate
+    })
+    expect(restarted.debt.balance).toBeLessThan(0)
+    expect(restarted.snapshot().current.debtTotal).toBe(visible)
+    expect(restarted.snapshot().current.debtTotal).toBeGreaterThan(0)
+  })
+
+  it('ignores a malformed persisted postponement', () => {
+    expect(new BreakDebt({ postponement: { earned: 'nope' } }).postponement).toBeNull()
+    expect(new BreakDebt({ postponement: null }).postponement).toBeNull()
+    const clamped = new BreakDebt({ postponement: { from: 1, earned: -5 } })
+    expect(clamped.postponement.earned).toBe(0)
+    expect(clamped.postponement.from).toBe(1)
+  })
+
+  it('replanning after an AFK reset keeps the outstanding postponement', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 40 * minute, rate)
+    debt.postpone(at + 40 * minute)
+    debt.record('work', at + 40 * minute, at + 45 * minute, rate)
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    debt.replan({ preserveDelay: true })
+    expect(debt.plan).toEqual([0, 0, 0])
+    expect(debt.postponement?.earned).toBeCloseTo(5 * minute * rate)
+    expect(debt.balance).toBeGreaterThan(0)
+  })
+
+  it('never charges one break the whole three-break plan', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 60 * minute, rate)
+    debt.postpone(at + 60 * minute)
+    debt.record('work', at + 60 * minute, at + 72 * minute, rate)
+    const payment = debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const total = debt.plan.reduce((sum, value) => sum + value, 0)
+    expect(payment).toBe(debt.plan[0])
+    expect(payment / total).toBeCloseTo(4 / 20)
+    expect(debt.plan[2] / debt.plan[0]).toBeCloseTo(3)
   })
 })

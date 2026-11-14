@@ -447,7 +447,9 @@ async function initialize (isAppStart = true) {
     })
     breakPlanner.on('idleRecoveryFinished', ({ fulfilled, reset }) => {
       if (fulfilled || reset) {
-        statistics.debt.replan()
+        // Clearing the forecast plan is fine, but the postponement balance is
+        // unpaid rest and must survive an AFK-fulfilled break / AFK reset.
+        statistics.debt.replan({ preserveDelay: true })
         statistics.cancel()
       }
       statistics.observeIdle(0, breakPlanner.naturalBreaksManager.thresholds.short)
