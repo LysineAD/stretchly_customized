@@ -95,8 +95,7 @@ export default class BreakDebt {
     const remaining = Math.max(0, end - this.work)
     const baseRest = upcoming.reduce((sum, { after, duration }) => after <= remaining + timerTolerance ? sum + duration : sum, 0)
     const shortage = Math.max(0, this.balance + remaining * rate - baseRest)
-    const delayShortage = Math.min(this.postponement?.earned ?? 0, Math.max(0, this.balance - upcoming[0].duration))
-    const required = Math.max(shortage, delayShortage)
+    const required = shortage
     const weights = upcoming.slice(0, 3).map(entry => entry.duration)
     const planned = this.plan.reduce((sum, value) => sum + value, 0)
     if (required < planned && planned > 0) {
@@ -105,7 +104,8 @@ export default class BreakDebt {
       const total = weights.reduce((sum, weight) => sum + weight, 0)
       this.plan = weights.map((weight, index) => this.plan[index] + (required - planned) * weight / total)
     }
-    return this.plan[0] > 0 ? Math.max(1, Math.round(this.plan[0])) : 0
+    const payment = Math.max(this.plan[0], this.postponement?.earned ?? 0)
+    return payment > 0 ? Math.max(1, Math.round(payment)) : 0
   }
 
   resolve (creditedExtra = 0) {
@@ -119,6 +119,31 @@ export default class BreakDebt {
   replan ({ preserveDelay = false } = {}) {
     this.plan = [0, 0, 0]
     if (!preserveDelay) this.postponement = null
+  }
+
+  // A skipped break is not a debt event: the ledger must look exactly as it did
+  // before the break window opened (no rest credit, no postponed debt cleared).
+  checkpoint () {
+    return {
+      balance: this.balance,
+      work: this.work,
+      day: this.day,
+      previousDay: this.previousDay ? { ...this.previousDay } : null,
+      plan: [...this.plan],
+      postponement: this.postponement ? { ...this.postponement } : null,
+      recent: this.recent.map(span => ({ ...span }))
+    }
+  }
+
+  rollback (snapshot) {
+    if (!snapshot) return
+    this.balance = snapshot.balance
+    this.work = snapshot.work
+    this.day = snapshot.day
+    this.previousDay = snapshot.previousDay ? { ...snapshot.previousDay } : null
+    this.plan = [...snapshot.plan]
+    this.postponement = snapshot.postponement ? { ...snapshot.postponement } : null
+    this.recent = snapshot.recent.map(span => ({ ...span }))
   }
 
   serialize () {

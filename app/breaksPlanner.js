@@ -141,6 +141,8 @@ class BreaksPlanner extends EventEmitter {
         due: duringBreak ? this.breakDueAt : next ? Date.now() + next.after : null,
         ordinal: next?.ordinal,
         type: next?.type,
+        duringBreak,
+        breakEndsAt: duringBreak ? Date.now() + Math.max(0, this.scheduler.timeLeft || 0) : null,
         completed: false,
         pausedScheduler: null,
         held: false
@@ -186,26 +188,35 @@ class BreaksPlanner extends EventEmitter {
     const withinNotice = period.due !== null && Math.abs(returnedAt - period.due) <= noticeLead
     const fulfills = !period.completed && larger(period.type) && (overlaps || withinNotice) &&
       idleTime >= this.settings.get(period.type + 'Duration')
-    if (!qualifies && !fulfills) {
+    // An absence that starts during a running larger break and lasts at least as
+    // long as that break fulfills it, even if the break ended while away. Anchor
+    // the absence to its wall-clock start so an OS idle-counter reset cannot
+    // shorten it.
+    const absence = Math.max(idleTime, returnedAt - period.from)
+    const coversBreak = Boolean(period.duringBreak && larger(period.type) && period.breakEndsAt !== null &&
+      returnedAt >= period.breakEndsAt && absence >= this.settings.get(period.type + 'Duration'))
+    const fulfilled = fulfills || coversBreak
+    if (!qualifies && !fulfilled) {
       if (period.held) this.resumeAfterIdle(period, idleTime)
       return
     }
+    if (coversBreak) period.completed = false
 
     const running = this._isFinishingBreak
-    if (running && !this.scheduler.waitingForStart && !fulfills && !full) {
+    if (running && !this.scheduler.waitingForStart && !fulfilled && !full) {
       this.emit('idleRecoveryFinished', { idleTime })
       return
     }
-    if (running) this.emit('closeForIdle', { completed: fulfills })
+    if (running) this.emit('closeForIdle', { completed: fulfilled })
     const next = this.largerBreaks(1)[0]
     const ordinal = next?.ordinal ?? this.longBreakNumber + 1
     const postpones = this.postponesNumber
     this.scheduler?.cancel()
     this.breakNumber = 0
-    this.longBreakNumber = full ? 0 : fulfills ? period.ordinal : Math.max(0, ordinal - 1)
-    this.emit('idleRecoveryFinished', { idleTime, fulfilled: fulfills, reset: full })
+    this.longBreakNumber = full ? 0 : fulfilled ? period.ordinal : Math.max(0, ordinal - 1)
+    this.emit('idleRecoveryFinished', { idleTime, fulfilled, reset: full })
     this.nextBreak()
-    if (!full && !fulfills && !period.completed) this.postponesNumber = postpones
+    if (!full && !fulfilled && !period.completed) this.postponesNumber = postpones
     this.emit('scheduleChanged')
     this.emit('updateToolTip')
   }
@@ -335,7 +346,7 @@ class BreaksPlanner extends EventEmitter {
     this.emit('updateToolTip')
   }
 
-  skipToMicrobreak (delay = 100) {
+  skipToMicrobreak (delay = 0) {
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
     this.notificationScheduler = null
@@ -356,7 +367,9 @@ class BreaksPlanner extends EventEmitter {
     this.emit('updateToolTip')
   }
 
-  skipToBreak (delay = 100) {
+  skipToBreak (delay = 0) {
+    const next = this.largerBreaks(1)[0]
+    const pastCurrent = this._isFinishingBreak && larger(this._scheduledBreakType)
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
     this.notificationScheduler = null
@@ -366,6 +379,7 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler.cancel()
     const shouldBreak = this.settings.get('break')
     const shouldMicrobreak = this.settings.get('microbreak')
+    if (next) this.longBreakNumber = next.ordinal + Number(pastCurrent)
     if (shouldBreak && shouldMicrobreak) {
       const breakInterval = this.settings.get('breakInterval') + 1
       this.breakNumber = breakInterval
@@ -375,7 +389,7 @@ class BreaksPlanner extends EventEmitter {
     this.emit('updateToolTip')
   }
 
-  skipToExtendedBreak (delay = 100) {
+  skipToExtendedBreak (delay = 0) {
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
     this.notificationScheduler = null

@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+- Fix tray **Skip current break** wiping time debt: skipping no longer credits the break window as rest, clears the postponement balance or zeroes the repayment plan. The skip still counts against Without delay %, and the outstanding debt is re-forecast onto the next larger breaks.
+- Fix the countdown after an AFK that outlasts a running Long/Extended break: the break is now fulfilled and the next Mini interval restarts at its full length from the moment of return, instead of continuing from when the break ended (which showed 18 instead of 20 minutes).
+- Suppress a false "return" when the OS idle counter restarts during an absence (screen lock / session glitch); a return is confirmed on the next poll, and the absence length is anchored to its original wall-clock start.
+- Add regression tests for tray Skip debt neutrality, AFK-covering-a-break and the debt-ledger checkpoint/rollback; audit the existing cumulative-ledger model.
+
+- Preserve the Long/Extended cycle when starting a Long break early from the tray, and remove avoidable delay before tray-selected break windows appear.
+- Give Postpone the same outlined control styling as Start.
+- Detect the pointer before showing a click-through break window, and include postponement work in the returning break even when earlier rest left a credit.
+
 - Show total debt and the current break’s assigned repayment in the break window, and reduce the centered notice to 220 × 44 pixels.
 
 - Forecast break shortages within the current 120 active minutes and spread repayment across the next three Long or Extended breaks in proportion to their durations.

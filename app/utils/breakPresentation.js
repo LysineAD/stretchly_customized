@@ -53,5 +53,8 @@ export default async function initializeBreakPresentation () {
   })
   updateInput()
   await document.fonts.ready
-  await new Promise(resolve => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
+  content.getBoundingClientRect()
+  const initialPointer = await window.breaks.getPointerPosition()
+  if (!pointer) pointer = initialPointer
+  updateInput()
 }

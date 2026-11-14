@@ -157,7 +157,8 @@ body[dir=rtl] .break-controls a img { padding-left: 0; padding-right: 20px; }
 .break-clock { position: absolute; top: 24px; right: 40px; font-size: 24px; line-height: 30px; }
 .break-clock:empty { display: none; }
 
-#start {
+#start,
+#postpone {
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 6px;
@@ -167,7 +168,8 @@ body[dir=rtl] .break-controls a img { padding-left: 0; padding-right: 20px; }
   padding: 8px 16px;
 }
 #start:hover,
-#start:focus-visible { color: #FFFF00; }
+#start:focus-visible,
+#postpone:focus-visible { color: #FFFF00; }
 
 .compact-break .breaks { max-width: 860px; overflow: hidden; }
 .compact-break .break-advice img:not(a img) { height: auto; max-width: 100%; }

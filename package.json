@@ -38,7 +38,7 @@
   "build": {
     "appId": "net.hovancik.stretchly",
     "productName": "Stretchly Customized",
-    "files": ["**/*", "!test/**", "!scripts/**", "!.scratch/**"],
+    "files": ["**/*", "!test/**", "!scripts/**", "!.scratch/**", "!dist/**"],
     "dmg": {
       "icon": "build/icon.icns",
       "iconSize": 128,

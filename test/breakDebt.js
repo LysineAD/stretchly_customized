@@ -36,7 +36,7 @@ describe('break debt', () => {
     expect(debt.forecast(rate, [
       ...projected([0, 30, 60], [15, 3, 3]),
       { after: 90 * minute, duration: 15 * minute }
-    ])).toBe(75000)
+    ])).toBe(105000)
     debt.record('rest', at + 136 * minute, at + 151 * minute, rate)
     expect(debt.balance).toBe(1.75 * minute)
   })
@@ -70,6 +70,25 @@ describe('break debt', () => {
     expect(stats.debt.balance).toBeCloseTo(42 * minute * rate)
   })
 
+  it('assigns postponement work even when earlier rest left a credit', () => {
+    const debt = new BreakDebt()
+    debt.record('rest', at, at + 10 * minute, rate)
+    debt.postpone(at + 10 * minute)
+    debt.record('work', at + 10 * minute, at + 12 * minute, rate)
+    expect(debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))).toBeGreaterThan(0)
+  })
+
+  it('shows postponement debt even if previous rest left a credit', () => {
+    let now = at
+    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
+    stats.debt.balance = -10 * minute
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    stats.postpone()
+    stats.debt.postpone(now)
+    now += 2 * minute
+    expect(stats.snapshot().current.debtTotal).toBe(2 * minute * rate)
+  })
+
   it('does not forecast a new shortage when a scheduled break arrives just after the timer boundary', () => {
     const debt = new BreakDebt({ work: 120 * minute + 1000, balance: 15 * minute })
     expect(debt.forecast(rate, projected([0, 40, 80], [15, 3, 3]))).toBe(0)
@@ -93,5 +112,63 @@ describe('break debt', () => {
     debt.recognizeIdle(midnight - 2 * minute, midnight + 2 * minute)
     expect(debt.work).toBe(0)
     expect(debt.balance).toBe(-2 * minute)
+  })
+})
+
+describe('break debt audit (current cumulative-ledger model)', () => {
+  it.each([
+    [{ break: false }, 0],
+    [{ break: true, extendedBreak: false, breakDuration: 5 * minute }, 15 * minute / (120 * minute)],
+    [{ break: true, extendedBreak: true, extendedBreakInterval: 3, breakDuration: 2 * minute, extendedBreakDuration: 5 * minute }, 9 * minute / (120 * minute)],
+    [{ break: true, extendedBreak: true, extendedBreakInterval: 2, breakDuration: 4 * minute, extendedBreakDuration: 12 * minute }, 16 * minute / (120 * minute)]
+  ])('derives the live rate %j as %d rest per active minute', (overrides, expected) => {
+    const settings = { break: true, extendedBreak: true, extendedBreakInterval: 3, breakDuration: 3 * minute, extendedBreakDuration: 15 * minute, ...overrides }
+    expect(breakDebtRate({ get: key => settings[key] })).toBeCloseTo(expected)
+  })
+
+  it('a checkpoint restores every ledger field, including postponement and recent spans', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 40 * minute, rate)
+    debt.postpone(at + 40 * minute)
+    debt.record('work', at + 40 * minute, at + 45 * minute, rate)
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const checkpoint = debt.checkpoint()
+    const before = JSON.stringify(debt.serialize())
+    debt.record('rest', at + 45 * minute, at + 49 * minute, rate)
+    debt.resolve(2 * minute)
+    expect(JSON.stringify(debt.serialize())).not.toBe(before)
+    debt.rollback(checkpoint)
+    expect(debt.serialize()).toEqual(JSON.parse(before))
+    expect(debt.postponement.earned).toBeCloseTo(5 * minute * rate)
+    expect(debt.recent).toHaveLength(1)
+    expect(debt.plan.every(value => value > 0)).toBe(true)
+  })
+
+  it('rolling back a skipped break does not let idle reclassify its rest twice', () => {
+    let now = at
+    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
+    now += 40 * minute
+    stats.offer({ type: 'long', baseDuration: 3 * minute })
+    stats.start('long', 3 * minute)
+    const balanceAtStart = stats.debt.balance
+    now += 2 * minute
+    stats.skip()
+    expect(stats.debt.balance).toBe(balanceAtStart)
+    now += 3 * minute
+    stats.observeIdle(3 * minute, 3 * minute)
+    expect(stats.debt.balance).toBeLessThan(balanceAtStart)
+    expect(stats.debt.work).toBe(40 * minute)
+  })
+
+  it('a credited extra repayment keeps the remaining plan instead of wiping it', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 100 * minute, rate)
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const planned = [...debt.plan]
+    debt.resolve(planned[0])
+    expect(debt.plan[0]).toBeGreaterThan(0)
+    expect(debt.postponement).toBeNull()
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    expect(debt.plan[0]).toBeGreaterThan(0)
   })
 })

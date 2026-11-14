@@ -56,7 +56,9 @@ describe('AFK recovery for scheduled breaks', () => {
 
   const comeBack = () => {
     idle.started = null
-    vi.advanceTimersByTime(2000)
+    // A return is confirmed on the poll after the idle counter drops, so allow
+    // two polling intervals (2 x 2s) before asserting the recovery.
+    vi.advanceTimersByTime(4000)
   }
 
   it('uses the saved durations for AFK qualification', () => {
@@ -102,14 +104,14 @@ describe('AFK recovery for scheduled breaks', () => {
     expect(planner.longBreakNumber).toBe(1)
   })
 
-  it('holds a running Long¡¯s successor until return without fulfilling a second break', () => {
+  it('fulfills a running Long when AFK outlasts it, without fulfilling a second break', () => {
     planner.on('startBreak', () => planner.emit('breakStarted', false))
     planner.on('finishBreak', () => planner.nextBreak())
     planner.nextBreak()
     leave(41, 8)
     expect(planner.scheduler.timer).toBeNull()
     comeBack()
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: false, reset: false }))
+    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true, reset: false }))
     expect(planner.longBreakNumber).toBe(2)
     expect(planner.timeToNextBreak).toBe(40 * minute)
   })

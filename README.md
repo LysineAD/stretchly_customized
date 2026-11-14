@@ -150,7 +150,7 @@ Clicking the *Stretchly* icon in your tray area will display the current status 
 
 <img src="tray.png" height="140">
 
-*Stretchly* monitors idle time when enabled. Short idle restarts the current Long cycle; longer idle starts a fresh schedule. Both thresholds are adjustable in Settings.
+*Stretchly* monitors idle time when enabled. Qualifying absences restart the current interval or fulfill the break they cover; the thresholds follow the configured Long and Extended break durations. See the [customization inventory](CUSTOMIZATIONS.md).
 
 *Stretchly* is also monitoring Do Not Disturb mode, so breaks are paused when DnD mode is On.
 
@@ -170,9 +170,9 @@ Type `stretchly help` to get a list of all commands and options available as wel
 
 This fork includes Extended breaks and is based on Stretchly 1.22.1. Preferences offers Window, Full screen, or **Compact**. Compact uses a fixed **860 × 720 logical-pixel** window centered on each selected monitor, with the original advice typography. Smaller work areas clamp that size. **Allow clicks through break windows** applies to all three display choices; visible controls and links remain clickable.
 
-Long and Extended breaks show a small notice one minute ahead when notifications are enabled. The break window opens when due and automatically starts after 20 seconds. Use Start to begin sooner or Ctrl+X to dismiss the notice or postpone the waiting break. Set a separate **Start next Long or Extended break** shortcut to take the next larger break early. Mini preparation still uses its own setting.
+Long and Extended breaks show a small notice one minute ahead when notifications are enabled. The break window opens when due and automatically starts after 20 seconds. Use Start to begin sooner or Ctrl+X to dismiss the notice or postpone the waiting break. Start and Postpone use matching outlined controls. Set a separate **Start next Long or Extended break** shortcut to take the next larger break early. Mini preparation still uses its own setting.
 
-Enable **Monitor system idle time** to credit qualifying AFK. The configured Long and Extended durations set the thresholds. An early Long-length absence restarts the work interval. An absence close to a scheduled break can fulfill it, and an Extended-length absence starts a fresh reminder session.
+Enable **Monitor system idle time** to credit qualifying AFK. The configured Long and Extended durations set the thresholds. An early Long-length absence restarts the work interval. An absence close to a scheduled break can fulfill it, as can an absence that starts during a running break and lasts at least as long as that break, even when the break ends while away. An Extended-length absence starts a fresh reminder session. In every case the next interval starts in full when you return.
 
 Every break window gives the tip the main full-width area and shows only **Break time, Without delay %, Average stretch and Computer use**, in **Today** and **7-day avg/day** columns. The latter divides time totals by seven; rates and average stretch use their seven-day samples. A small **Postpone +1, +2** badge counts presses. Zero or one Postpone counts as without delay; additional postponements, skips and early endings lower that one percentage. History and its backup retain only seven calendar dates. Lifetime, longest stretch, type breakdowns, scheduling text and the large current-work headline are removed. See [statistics and break debt definitions](STATISTICS.md).
 
@@ -313,7 +313,7 @@ To have different theme for Mini breaks, set `miniBreakColor` to desired value, 
 #### Natural breaks inactivity time [![Contributor Preferences](https://img.shields.io/badge/Contributor_Preferences-✔-success)](#contributor-preferences)
 Main Settings enables or disables idle monitoring. Long and Extended duration settings determine when AFK qualifies for their breaks.
 
-The corresponding settings are `naturalBreaksInactivityResetTime` (default `300000`) and `naturalBreaksLongIdleResetTime` (default `1800000`), in milliseconds.
+The legacy settings `naturalBreaksInactivityResetTime` (default `300000`) and `naturalBreaksLongIdleResetTime` (default `1800000`), in milliseconds, are used only when Long breaks are disabled; with Long breaks enabled the two break durations are the thresholds.
 
 You can also set `naturalBreaksCheckInterval` in milliseconds: how often idle time is checked. A higher number means lower CPU and energy usage, but slightly less responsive detection. Default value is `2000` which is 2 seconds.
 

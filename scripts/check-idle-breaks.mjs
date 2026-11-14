@@ -13,11 +13,9 @@ writeFileSync(join(profile, 'Data/config.json'), JSON.stringify({
   notifyNewVersion: false,
   naturalBreaks: false,
   monitorDnd: false,
-  microbreakInterval: 60000,
+  microbreakInterval: 1200000,
   breakInterval: 1,
-  extendedBreakInterval: 3,
-  naturalBreaksInactivityResetTime: 60000,
-  naturalBreaksLongIdleResetTime: 120000
+  extendedBreakInterval: 2
 }))
 const server = createServer()
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -67,51 +65,67 @@ try {
       const { join } = process.getBuiltinModule('path')
       const { default: BreaksPlanner } = require(join(app.getAppPath(), 'app/breaksPlanner.js'))
       const { default: defaults } = require(join(app.getAppPath(), 'app/utils/defaultSettings.js'))
-      const reports = []
-      const makePlanner = () => {
-        const values = {
-          ...defaults, naturalBreaks: false, monitorDnd: false,
-          microbreakInterval: 60000, breakInterval: 1, extendedBreakInterval: 3,
-          naturalBreaksInactivityResetTime: 60000, naturalBreaksLongIdleResetTime: 120000
-        }
-        return { planner: new BreaksPlanner({ get: key => values[key] }), values }
+      const { default: BreakStatistics } = require(join(app.getAppPath(), 'app/utils/breakStatistics.js'))
+      const { breakDebtRate } = require(join(app.getAppPath(), 'app/utils/breakDebt.js'))
+      const minute = 60000
+      const values = {
+        ...defaults, naturalBreaks: false, monitorDnd: false,
+        microbreakInterval: 20 * minute, breakInterval: 1,
+        breakDuration: 4 * minute, extendedBreak: true,
+        extendedBreakDuration: 12 * minute, extendedBreakInterval: 2,
+        naturalBreaksCheckInterval: 2000
       }
-      const dispose = planner => {
+      const settings = { get: key => values[key] }
+      const reports = {}
+      const planner = new BreaksPlanner(settings)
+      try {
+        reports.thresholds = planner.naturalBreaksManager.thresholds
+        if (reports.thresholds.short !== 4 * minute || reports.thresholds.long !== 12 * minute) {
+          throw Error('idle thresholds are not derived from the break durations')
+        }
+        let finished = null
+        planner.on('idleRecoveryFinished', payload => { finished = payload })
+        planner.on('startBreak', () => planner.emit('breakStarted', false, values.breakDuration))
+        planner.nextBreak()
+        planner.nextBreak()
+        planner.emit('startBreak')
+        planner.naturalBreaksManager.emit('idleTimeObserved', 4 * minute, 0)
+        if (!planner.idlePeriod?.duringBreak) throw Error('idle was not captured during the running Long break')
+        planner.nextBreak()
+        if (!planner.idlePeriod?.completed) throw Error('the break ending while away was not recorded')
+        planner.naturalBreaksManager.emit('idlePeriodFinished', 6 * minute, Date.now() + 6 * minute)
+        if (!finished?.fulfilled) throw Error('AFK covering the running break was not fulfilled')
+        reports.afk = { fulfilled: finished.fulfilled, reset: finished.reset, timeToNextBreak: planner.timeToNextBreak }
+        if (Math.abs(planner.timeToNextBreak - 20 * minute) > 1000) {
+          throw Error('the next Mini interval did not restart in full on return')
+        }
+      } finally {
+        planner.scheduler?.cancel()
         planner.naturalBreaksManager.stop()
         planner.dndManager.stop()
         planner.appExclusionsManager.stop()
-        planner.scheduler?.cancel()
       }
-      try {
-        for (const stage of ['first-mini', 'next-long', 'next-extended']) {
-          const { planner } = makePlanner()
-          if (stage === 'next-long') planner.breakNumber = 1
-          if (stage === 'next-extended') { planner.breakNumber = 1; planner.longBreakNumber = 2 }
-          planner.nextBreak()
-          const ordinal = planner.longBreakNumber + (planner._scheduledBreakType === 'microbreak' ? 1 : 0)
-          planner.naturalBreaksManager.emit('idleShortThresholdReached', 60000)
-          if (planner.scheduler.timer !== null) throw Error(stage + ': short recovery countdown must be paused')
-          if (planner._scheduledBreakType !== 'microbreak' && planner.settings.get('microbreak')) throw Error(stage + ': short recovery did not return to first Mini')
-          const afterShort = [planner.breakNumber, planner.longBreakNumber]
-          planner.naturalBreaksManager.emit('idleShortThresholdReached', 62000)
-          if (JSON.stringify(afterShort) !== JSON.stringify([planner.breakNumber, planner.longBreakNumber])) throw Error(stage + ': repeated short threshold changed cycle ordinal')
-          if (stage !== 'first-mini') {
-            planner.naturalBreaksManager.emit('idleLongThresholdReached', 120000)
-            if (planner.breakNumber !== 1 || planner.longBreakNumber !== 0) throw Error(stage + ': long threshold did not reset the full cycle')
-          }
-          planner.naturalBreaksManager.emit('idlePeriodFinished', 120000)
-          if (planner.scheduler.timer === null) throw Error(stage + ': schedule failed to resume on activity')
-          reports.push({ stage, ordinal, afterShort, resumed: planner.scheduler.reference })
-          dispose(planner)
-        }
-      } finally {}
+      let clock = Date.now()
+      const stats = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings) })
+      stats.debt.balance = 20 * minute
+      stats.debt.work = 100 * minute
+      stats.offer({ type: 'long', baseDuration: 4 * minute })
+      clock += 10000
+      stats.start('long', 4 * minute)
+      clock += 3 * minute
+      const before = stats.debt.balance
+      stats.skip()
+      reports.skip = { before, after: stats.debt.balance }
+      if (stats.debt.balance !== before) throw Error('Skip changed the outstanding time debt')
       return reports
     })()`
   })
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
-  assert.equal(result.result.value.length, 3)
+  assert.equal(result.result.value.thresholds.short, 240000)
+  assert.equal(result.result.value.afk.fulfilled, true)
+  assert.equal(result.result.value.skip.after, result.result.value.skip.before)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
-  console.log('Packaged two-tier idle cycle recovery and full-reset checks passed.')
+  console.log('Packaged idle thresholds, AFK-covered break and Skip debt neutrality checks passed.')
 } finally {
   socket?.close()
   child.kill()

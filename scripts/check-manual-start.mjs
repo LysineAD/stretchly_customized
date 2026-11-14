@@ -163,6 +163,17 @@ for (const type of ['mini', 'long', 'extended']) {
       assert.equal(visible, true, type + ': prepared reminder windows should become visible')
       if (autoStartCheck) await readinessInspector.evaluate("(() => { const { BrowserWindow } = process.getBuiltinModule('module').createRequire(process.execPath)('electron'); for (const window of BrowserWindow.getAllWindows()) { window.setOpacity(0); window.setIgnoreMouseEvents(true) } return true })()")
     }
+    if (readinessCheck) {
+      readinessRecords = await readinessInspector.evaluate('breakReadiness')
+      assert.ok(readinessRecords.length >= 2, type + ': each monitor must have a readiness record')
+      for (const entry of readinessRecords) {
+        assert.equal(entry.shows.length, 1, type + ': each window must appear once')
+        assert.deepEqual(entry.shows[0], { painted: true, loaded: true }, type + ': windows must stay hidden until paint and renderer preparation')
+      }
+      reports.push({ type, readiness: readinessRecords })
+      console.log(type + ': native paint and renderer readiness precede display on both monitors')
+      continue
+    }
     for (const target of breaks) connections.push(await connect(target))
     const stateExpression = `JSON.stringify({
       started: (await window.breaks.sendBreakData())[1],
@@ -295,15 +306,6 @@ for (const type of ['mini', 'long', 'extended']) {
     } else await pressShortcut()
     await sleep(200)
     if (!strictQuitCheck) assert.equal((await targets()).filter(target => target.url.endsWith('/microbreak.html') || target.url.endsWith('/break.html')).length, 0)
-    if (readinessCheck) {
-      readinessRecords = await readinessInspector.evaluate('breakReadiness')
-      assert.ok(readinessRecords.length >= 2, type + ': each monitor must have a readiness record')
-      for (const entry of readinessRecords) {
-        assert.equal(entry.shows.length, 1, type + ': each window must appear once')
-        assert.deepEqual(entry.shows[0], { painted: true, loaded: true }, type + ': windows must stay hidden until paint and renderer preparation')
-      }
-      console.log(type + ': native paint and renderer readiness precede display on both monitors')
-    }
     const saved = JSON.parse(readFileSync(join(data, 'config.json'), 'utf8'))
     for (const key of Object.keys(config)) assert.deepEqual(saved[key], config[key], key)
     reports.push({ type, readiness: readinessRecords, waitingBounds, runningBounds, monitors: waiting.length, waiting, running, trigger: autoStartCheck ? 'auto-start deadline' : type === 'mini' ? 'button' : 'native global shortcut', repeatedStartIgnored: true, sameShortcutPostponesAfterStart: !autoStartCheck && !strictQuitCheck, intentionalStrictQuit: strictQuitCheck, fullDurationAfterAutoStart: autoStartCheck })

@@ -1,6 +1,6 @@
 # Stretchly Customized: customization inventory
 
-Updated: 2026-10-20. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
+Updated: 2026-11-14. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
 
 ## Current app and settings
 
@@ -28,9 +28,9 @@ Updated: 2026-10-20. This file records the active feature contract for future ed
 | Strict mode and tray | Strict mode hides on-window Skip. The tray retains intentional Skip, Pause, Preferences and Quit. Settings limits postponements per Long or Extended break. |
 | Preferences | Bounded, resizable window with scrolling, settings cards, and controls for the Mini preparation delay, larger-break postponement limit and separate shortcut. |
 | Notifications | Long and Extended show a small centered notice for three seconds, one minute before the scheduled break, when enabled. Mini keeps its existing notification. |
-| Idle controls | The configured break durations determine the idle thresholds. Early idle restarts the current interval, and qualifying idle near a scheduled break fulfills it. Extended-length idle starts a fresh reminder session. The countdown resumes on return. |
+| Idle controls | The configured break durations determine the idle thresholds. Early idle restarts the current interval, and qualifying idle near a scheduled break fulfills it. An absence that starts during a running Long/Extended break and lasts at least as long as that break fulfills it even if the break ends while away. Extended-length idle starts a fresh reminder session. The next full interval starts at the moment of return. An OS idle-counter reset (lock/session glitch) is confirmed over two polls and does not report a false return. |
 | Statistics | Only Break time, Without delay %, Average stretch and Computer use are displayed, with Today and 7-day avg/day columns. Time totals are divided by seven; rates and stretch averages use their underlying seven-day samples. A small +N badge beside Postpone counts each press. Zero/one Postpone is normal; more, Skip or an early ending lower the one percentage. No lifetime, longest-stretch, type breakdown, current-work headline or planned-interval display. Only seven dates persist, in both main and backup files. See [STATISTICS.md](STATISTICS.md). |
-| Break debt | The current 120 active minutes are the forecast window. Unpaid time persists, with additions distributed proportionally across the next three larger breaks. See [STATISTICS.md](STATISTICS.md). |
+| Break debt | The current 120 active minutes are the forecast window. Unpaid time persists, with additions distributed proportionally across the next three larger breaks. Tray **Skip current break** is debt-neutral: the skipped window is not credited as rest, the postponement balance is preserved, and the plan is re-forecast onto the next larger breaks. See [STATISTICS.md](STATISTICS.md). |
 | Other upstream options | Manual finish, clock, health mode, images, audio, idle/DND handling and advanced preferences are retained. These are upstream features; Extended adapts the relevant options to its third break type. |
 | Branding/delivery | Windows executable/product name is Stretchly Customized. Builds are delivered locally; generated binaries, profiles and check artifacts are excluded from Git. |
 
@@ -40,6 +40,7 @@ One Postpone remains normal; the badge still shows +1. A second press shows +2 a
 
 | Stage | Record |
 | --- | --- |
+| Skip debt neutrality and AFK return fix, 2026-11-14 | Tray Skip no longer credits rest or clears the postponement/plan; `BreakStatistics.skip()` rolls the ledger back to the break's start checkpoint. Idle that outlasts a running larger break fulfills it and restarts the full Mini interval on return; a spurious `idlePeriodFinished` from an OS idle-counter reset is suppressed. Regressions in `test/skipDebtRegression.js` and `test/afkReturnRegression.js`. |
 | Minimal break window and recurring auto-start, 2026-10-20 | Removes the large status/header/footer and redundant metrics; restores auto-start after Postpone; limits history and backup to seven days. Supersedes the previous manual-only returns and lifetime retention. |
 | Early preparation, two-stage idle and statistics, 2026-10-19 | Replaces the earlier idle modes and separate delay sliders; adds the first-preparation exception, manual-only returns after Postpone, and bounded local daily/weekly statistics. |
 | Original Extended fork, 2026-07-06 | Commit `872a94b`: third break type and integration, based on `523649f`. Originally named stretchly_extended_breaks. |
@@ -57,7 +58,7 @@ Old `startBreakShortcut` settings are ignored; no separate Start shortcut is reg
 | Area | Files |
 | --- | --- |
 | Scheduling / third break type | `app/breaksPlanner.js`, `app/utils/scheduler.js`, `app/main.js`, `app/utils/statusMessages.js` |
-| Idle handling / cycle recovery | `app/utils/naturalBreaksManager.js`, `scheduler.js`, `app/breaksPlanner.js`, `statusMessages.js`; regressions in `test/idleBreaks.js` and `scripts/check-idle-breaks.mjs` |
+| Idle handling / cycle recovery | `app/utils/naturalBreaksManager.js`, `scheduler.js`, `app/breaksPlanner.js`, `statusMessages.js`; regressions in `test/idleBreaks.js`, `test/afkReturnRegression.js` and `scripts/check-idle-breaks.mjs` |
 | Display / mouse routing | `app/utils/breakDisplaySettings.js`, `breakWindowPresentation.js`, `breakPresentation.js`, `app/css/break.css` |
 | Waiting / auto-start / shared key | `app/utils/breakStartController.js`, `breakStartControl.js`, `breakActionShortcut.js`, both break renderers, `app/main.js` |
 | Preferences / defaults / labels | `app/preferences.html`, `preferences-renderer.js`, `css/preferences.css`, `utils/defaultSettings.js`, `locales/en.json` |

@@ -120,6 +120,7 @@ export default class BreakStatistics {
     this.episode.hasStarted = true
     this.episode.activeStartedAt = this.now()
     this.episode.duration = duration
+    this.episode.debtCheckpoint = this.debt.checkpoint()
     this.mode = 'break'
     this.breakType = type
     this.onChange()
@@ -147,6 +148,15 @@ export default class BreakStatistics {
     this.breakType = null
     if (this.mode !== 'paused') this.mode = this.idleQualified ? 'idle' : 'work'
     this.onChange()
+  }
+
+  // Skipping is not a debt event. Erase the rest credit recorded for the break
+  // window, then finish the episode so "Without delay %" still counts the skip.
+  skip () {
+    const checkpoint = this.episode?.debtCheckpoint ?? this.debt.checkpoint()
+    this.advance()
+    this.debt.rollback(checkpoint)
+    this.finish(false)
   }
 
   cancel () {
@@ -227,7 +237,7 @@ export default class BreakStatistics {
     }
     const episode = this.episode
     const kind = episode ? `${episode.type === 'mini' ? 'Mini' : episode.type === 'extended' ? 'Extended' : 'Long'} break` : ''
-    return { current: { kind, postpones: episode?.postpones ?? 0, debtTotal: Math.max(0, this.debt.balance), debtPayment: episode?.debtPayment ?? 0 }, today, week }
+    return { current: { kind, postpones: episode?.postpones ?? 0, debtTotal: Math.max(0, this.debt.balance, this.debt.postponement?.earned ?? 0), debtPayment: episode?.debtPayment ?? 0 }, today, week }
   }
 
   serialize () {

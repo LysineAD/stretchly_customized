@@ -14,6 +14,9 @@ class NaturalBreaksManager extends EventEmitter {
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
     this.lastObservedIdleTime = 0
+    this.absenceStart = null
+    this.pendingReturn = null
+    this.idlePeriodReported = false
     if (this.usingNaturalBreaks) this.start()
   }
 
@@ -29,14 +32,20 @@ class NaturalBreaksManager extends EventEmitter {
     if (!this.timer) return
     const wasOnIdle = this.isOnNaturalBreak
     const idleTime = this.lastObservedIdleTime
+    const pending = this.pendingReturn
     this.usingNaturalBreaks = false
     this.isOnNaturalBreak = false
     this.isSchedulerCleared = false
     this.lastObservedIdleTime = 0
+    this.absenceStart = null
+    this.pendingReturn = null
     clearInterval(this.timer)
     this.timer = null
     desktopIdle.stopMonitoring()
-    if (wasOnIdle) this.emit('idlePeriodFinished', idleTime, Date.now())
+    if (!this.idlePeriodReported && (wasOnIdle || pending)) {
+      this.idlePeriodReported = true
+      this.emit('idlePeriodFinished', pending?.elapsed ?? idleTime, pending?.returnedAt ?? Date.now())
+    }
     log.info('Stretchly: stopping Idle time monitoring')
   }
 
@@ -72,15 +81,36 @@ class NaturalBreaksManager extends EventEmitter {
       const previousIdleTime = this.lastObservedIdleTime
       const minimum = this.minimumIdle
       this.lastObservedIdleTime = idleTime
-      if (this.isOnNaturalBreak && (idleTime < minimum || now - idleTime > previousAt - previousIdleTime + 1500)) {
+
+      if (this.pendingReturn) {
+        const pending = this.pendingReturn
+        this.pendingReturn = null
+        if (idleTime > previousIdleTime + 500) {
+          // The OS idle counter restarted (screen lock / session glitch) while
+          // the user is still away. Keep the same absence open instead of
+          // reporting a return that would restart the countdown too early.
+          this.isOnNaturalBreak = true
+          this.isSchedulerCleared = true
+        } else {
+          this.absenceStart = null
+          this.idlePeriodReported = true
+          this.emit('idleTimeObserved', pending.elapsed, previousIdleTime, pending.returnedAt)
+          this.emit('idlePeriodFinished', pending.elapsed, pending.returnedAt)
+        }
+      } else if (this.isOnNaturalBreak && (idleTime < minimum || now - idleTime > previousAt - previousIdleTime + 1500)) {
         this.isOnNaturalBreak = false
         this.isSchedulerCleared = false
         const returnedAt = now - idleTime
-        const elapsed = Math.max(previousIdleTime, returnedAt - (previousAt - previousIdleTime))
-        this.emit('idleTimeObserved', elapsed, previousIdleTime, returnedAt)
-        this.emit('idlePeriodFinished', elapsed, returnedAt)
+        const elapsed = Math.max(previousIdleTime, returnedAt - (previousAt - previousIdleTime),
+          this.absenceStart === null ? 0 : now - this.absenceStart)
+        this.pendingReturn = { elapsed, returnedAt }
       }
+
       if (idleTime >= minimum) {
+        if (this.absenceStart === null || this.idlePeriodReported) {
+          this.absenceStart = now - idleTime
+          this.idlePeriodReported = false
+        }
         this.isOnNaturalBreak = true
         this.emit('idleTimeObserved', idleTime, previousIdleTime)
         if (idleTime >= Math.min(this.thresholds.short, this.thresholds.long)) {

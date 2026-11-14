@@ -110,6 +110,45 @@ describe('break reminders and auto-start', () => {
     expect(f.planner.longBreakNumber).toBe(3)
   })
 
+  it.each([[2, 1], [3, 2]])('keeps the larger-break cycle when the tray starts %i-cycle breaks early', (interval, normalCount) => {
+    const f = setup('mini')
+    f.values.extendedBreakInterval = interval
+    for (let i = 0; i < normalCount; i++) {
+      f.planner.skipToBreak()
+      vi.advanceTimersByTime(100)
+      f.planner.nextBreak()
+      f.planner.skipToMicrobreak()
+      vi.advanceTimersByTime(100)
+      f.planner.nextBreak()
+    }
+    expect(f.planner._scheduledBreakType).toBe('extendedBreak')
+  })
+
+  it('does not advance the larger-break ordinal twice when the next break is already scheduled', () => {
+    const f = setup('long')
+    const ordinal = f.planner.longBreakNumber
+    f.planner.skipToBreak()
+    vi.advanceTimersByTime(100)
+    expect(f.planner.longBreakNumber).toBe(ordinal)
+    f.planner.nextBreak()
+    f.planner.nextBreak()
+    expect(f.planner.longBreakNumber).toBe(ordinal + 1)
+  })
+
+  it('advances past a larger break already on screen when the tray starts another Long break', () => {
+    const f = setup('long')
+    const ordinal = f.planner.longBreakNumber
+    f.planner.waitForBreakStart('long')
+    f.planner.skipToBreak()
+    expect(f.planner.longBreakNumber).toBe(ordinal + 1)
+  })
+
+  it.each(['skipToMicrobreak', 'skipToBreak', 'skipToExtendedBreak'])('%s starts without an extra scheduling delay', method => {
+    const f = setup('mini')
+    f.planner[method]()
+    expect(f.planner.scheduler.delay).toBe(0)
+  })
+
   it('holds an already visible countdown while checking AFK', () => {
     const f = setup('long')
     vi.advanceTimersByTime(1200000)

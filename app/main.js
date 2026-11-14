@@ -990,7 +990,6 @@ function startMicrobreak () {
       resizable: false,
       frame: showBreaksAsRegularWindows,
       show: false,
-      backgroundThrottling: false,
       transparent: !showBreaksAsRegularWindows,
       ...getBlurredBackgroundWindowOptions(),
       backgroundColor: calculateBackgroundColor(settings.get('miniBreakColor')),
@@ -1003,6 +1002,7 @@ function startMicrobreak () {
       titleBarOverlay: process.platform === 'darwin' ? !showBreaksAsRegularWindows : undefined,
       webPreferences: {
         preload: join(__dirname, './microbreak-preload.mjs'),
+        backgroundThrottling: false,
         sandbox: false
       }
     }
@@ -1212,7 +1212,6 @@ function startBreak (type = 'long') {
       resizable: false,
       frame: showBreaksAsRegularWindows,
       show: false,
-      backgroundThrottling: false,
       transparent: !showBreaksAsRegularWindows,
       ...getBlurredBackgroundWindowOptions(),
       backgroundColor: calculateBackgroundColor(settings.get('mainColor')),
@@ -1225,6 +1224,7 @@ function startBreak (type = 'long') {
       titleBarOverlay: process.platform === 'darwin' ? !showBreaksAsRegularWindows : undefined,
       webPreferences: {
         preload: join(__dirname, isExtended ? './extended-break-preload.mjs' : './break-preload.mjs'),
+        backgroundThrottling: false,
         sandbox: false
       }
     }
@@ -1372,10 +1372,11 @@ const enterMiniBreakManualContinuation = (shouldPlaySound) => enterManualAwaitPh
 const enterLongBreakManualContinuation = (shouldPlaySound) => enterManualAwaitPhase('long', shouldPlaySound)
 const enterExtendedBreakManualContinuation = (shouldPlaySound) => enterManualAwaitPhase('extended', shouldPlaySound)
 
-function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true) {
+function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true, options = {}) {
   if (!microbreakWins) return
   const episode = statistics?.episode
-  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+  if (options.skipped) statistics?.skip()
+  else if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
   else statistics?.cancel()
   microbreakWins = breakComplete(shouldPlaySound, microbreakWins, 'mini')
   log.info(`Stretchly: finishing Mini break (shouldPlanNext: ${shouldPlanNext})`)
@@ -1387,13 +1388,17 @@ function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true) {
   updateTray()
 }
 
-function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
+function finishBreak (shouldPlaySound = true, shouldPlanNext = true, options = {}) {
   if (!breakWins) return
-  statistics?.advance()
-  const episode = statistics?.episode
-  if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('breakDuration'))))
-  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
-  else statistics?.cancel()
+  if (options.skipped) {
+    statistics?.skip()
+  } else {
+    statistics?.advance()
+    const episode = statistics?.episode
+    if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('breakDuration'))))
+    if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+    else statistics?.cancel()
+  }
   breakWins = breakComplete(shouldPlaySound, breakWins, 'long')
   log.info(`Stretchly: finishing Long break (shouldPlanNext: ${shouldPlanNext})`)
   if (shouldPlanNext) {
@@ -1404,13 +1409,17 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true) {
   updateTray()
 }
 
-function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true) {
+function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true, options = {}) {
   if (!extendedBreakWins) return
-  statistics?.advance()
-  const episode = statistics?.episode
-  if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('extendedBreakDuration'))))
-  if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
-  else statistics?.cancel()
+  if (options.skipped) {
+    statistics?.skip()
+  } else {
+    statistics?.advance()
+    const episode = statistics?.episode
+    if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('extendedBreakDuration'))))
+    if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
+    else statistics?.cancel()
+  }
   extendedBreakWins = breakComplete(shouldPlaySound, extendedBreakWins, 'long')
   log.info(`Stretchly: finishing Extended break (shouldPlanNext: ${shouldPlanNext})`)
   if (shouldPlanNext) {
@@ -1702,13 +1711,13 @@ function updateTray () {
 function skipCurrentBreak () {
   if (microbreakWins) {
     increaseDanger(1)
-    finishMicrobreak(false)
+    finishMicrobreak(false, true, { skipped: true })
   } else if (breakWins) {
     increaseDanger(2)
-    finishBreak(false)
+    finishBreak(false, true, { skipped: true })
   } else if (extendedBreakWins) {
     increaseDanger(2)
-    finishExtendedBreak(false)
+    finishExtendedBreak(false, true, { skipped: true })
   }
 }
 
