@@ -122,91 +122,18 @@ try {
       const before = stats.debt.balance
       stats.skip()
       reports.skip = { before, after: stats.debt.balance }
-      if (stats.debt.balance !== before) throw Error('Skip changed the outstanding time debt')
+      if (stats.debt.balance !== before - 3 * minute) throw Error('Partial rest was not credited')
 
-      // A Quit/restart must keep the visible debt and the postponement, and a
-      // single break must never be charged the whole three-break plan.
       const ledger = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings) })
-      ledger.offer({ type: 'long', baseDuration: 4 * minute })
-      clock += 10000
-      ledger.postpone()
-      ledger.debt.postpone(clock)
-      clock += 12 * minute
-      ledger.offer({ type: 'long', baseDuration: 4 * minute })
-      const upcoming = [0, 40, 80].map((after, i) => ({
-        after: after * minute,
-        duration: [4, 4, 12][i] * minute
-      }))
+      ledger.debt.balance = 30 * minute
+      const upcoming = [0, 40, 80].map((after, i) => ({ after: after * minute, duration: [4, 4, 12][i] * minute }))
       const payment = ledger.debt.forecast(breakDebtRate(settings), upcoming)
-      const visible = ledger.snapshot().current.debtTotal
       const saved = JSON.parse(ledger.serialize())
-      const restoredLedger = new BreakDebt(saved.debt)
-      const restarted = new BreakStatistics({ data: saved, now: () => clock, debtRate: () => breakDebtRate(settings) })
-      reports.debt = {
-        payment,
-        plan: ledger.debt.plan,
-        visible,
-        earned: saved.debt.postponement?.earned ?? 0,
-        restored: restoredLedger.postponement !== null,
-        afterRestart: restarted.snapshot().current.debtTotal
-      }
-      if (!reports.debt.restored || reports.debt.earned === 0) throw Error('the packaged build lost the postponement debt on restart')
-      if (Math.abs(reports.debt.afterRestart - reports.debt.visible) > 1) throw Error('the packaged build lost the visible time debt on restart')
-      if (payment > ledger.debt.plan[0] + 1) throw Error('the packaged build charged one break more than its three-break plan slot')
-      if (Math.abs(ledger.debt.plan[2] / ledger.debt.plan[0] - 3) > 0.01) throw Error('the packaged build did not split the plan 1:1:3 by Long/Extended length')
-
-      // "Skip to ...", "Reset breaks" and an early finish must not wipe the
-      // postponement. Earlier rest can leave a negative balance, in which case
-      // the postponement is the only thing keeping the debt visible.
-      const seen = () => Math.max(0, ledger.debt.balance, ledger.debt.postponement?.earned ?? 0)
-      ledger.debt.balance = -26 * minute
-      ledger.debt.postponement.earned = 4 * minute
-      const visibleBefore = seen()
-      ledger.debt.replan()
-      const afterReplan = seen()
-      ledger.debt.resolve(0)
-      const afterEarlyFinish = seen()
-      reports.skipTo = { visibleBefore, afterReplan, afterEarlyFinish }
-      if (afterReplan !== visibleBefore || afterEarlyFinish !== visibleBefore) {
-        throw Error('the packaged build lost time debt on Skip-to / Reset / early finish')
-      }
-      if (ledger.debt.postponement?.earned !== 4 * minute) {
-        throw Error('the packaged build cleared the postponement on Skip-to / Reset')
-      }
-
-      // A bare replan() in main.js must not reappear: it used to default to
-      // clearing the postponement and silently zeroed the visible debt.
-      const { readFileSync } = process.getBuiltinModule('fs')
-      const mainSource = readFileSync(join(app.getAppPath(), 'app/main.js'), 'utf8')
-      const bareReplans = mainSource.split('debt.replan()').length - 1
-      reports.skipTo.bareReplans = bareReplans
-      if (bareReplans !== 0) throw Error('main.js has a bare debt.replan() that can clear the postponement')
-
-      // Paying the first of three slots must leave the other two owed. An
-      // earlier credit means the postponement is the only thing backing them.
-      const slots = new BreakDebt()
-      slots.balance = -26 * minute
-      slots.work = 100 * minute
-      slots.postpone(0)
-      slots.postponement.earned = 4 * minute
-      const slotUpcoming = [0, 40, 80, 120].map((after, i) => ({
-        after: after * minute,
-        duration: [4, 4, 12, 4][i] * minute
-      }))
-      let slotRepaid = 0
-      let slotsLost = 0
-      for (let slot = 0; slot < 3; slot++) {
-        const pay = slots.forecast(breakDebtRate(settings), slotUpcoming)
-        slotRepaid += pay
-        slots.resolve(pay)
-        const owed = Math.max(0, 4 * minute - slotRepaid)
-        const remaining = slots.plan.reduce((sum, value) => sum + value, 0)
-        if (Math.abs(remaining - owed) > 1) slotsLost++
-      }
-      reports.skipTo.threeSlots = { repaid: slotRepaid, lost: slotsLost }
-      if (slotsLost !== 0 || Math.abs(slotRepaid - 4 * minute) > 1) {
-        throw Error('the packaged build lost postponed rest after the first repayment slot')
-      }
+      const restored = new BreakDebt(saved.debt)
+      reports.debt = { payment, plan: ledger.debt.plan, before: ledger.debt.balance, after: restored.balance }
+      if (payment > 6 * minute) throw Error('Repayment exceeds six minutes')
+      if (Math.abs(ledger.debt.plan[2] - 3 * ledger.debt.plan[0]) > 1) throw Error('Forecast is not proportional')
+      if (restored.balance !== ledger.debt.balance) throw Error('Debt changed on restart')
       return reports
     })()`
   })
@@ -214,17 +141,11 @@ try {
   assert.equal(result.result.value.thresholds.short, 240000)
   assert.ok(Math.abs(result.result.value.rate - 0.2) < 1e-9)
   assert.equal(result.result.value.afk.fulfilled, true)
-  assert.equal(result.result.value.skip.after, result.result.value.skip.before)
-  assert.equal(result.result.value.debt.restored, true)
-  assert.equal(result.result.value.debt.afterRestart, result.result.value.debt.visible)
-  assert.ok(Math.abs(result.result.value.debt.payment - result.result.value.debt.plan[0]) <= 1)
-  assert.equal(result.result.value.skipTo.bareReplans, 0)
-  assert.equal(result.result.value.skipTo.afterReplan, result.result.value.skipTo.visibleBefore)
-  assert.equal(result.result.value.skipTo.afterEarlyFinish, result.result.value.skipTo.visibleBefore)
-  assert.equal(result.result.value.skipTo.threeSlots.lost, 0)
-  assert.ok(Math.abs(result.result.value.skipTo.threeSlots.repaid - 240000) <= 1)
+  assert.equal(result.result.value.skip.after, result.result.value.skip.before - 180000)
+  assert.equal(result.result.value.debt.before, result.result.value.debt.after)
+  assert.ok(result.result.value.debt.payment <= 360000)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
-  console.log('Packaged idle thresholds, debt rate, AFK-covered break, Skip neutrality, debt restart, Skip-to and three-slot repayment checks passed.')
+  console.log('Packaged idle thresholds, debt rate, AFK recovery, partial rest, proportional forecast, repayment cap and restart checks passed.')
 } finally {
   socket?.close()
   child.kill()

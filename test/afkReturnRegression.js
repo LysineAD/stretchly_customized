@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import BreaksPlanner from '../app/breaksPlanner.js'
 import defaultSettings from '../app/utils/defaultSettings.js'
 
-const idle = vi.hoisted(() => ({ started: null }))
+const idle = vi.hoisted(() => ({ started: null, locked: false }))
 vi.mock('electron', () => ({
-  powerMonitor: { getSystemIdleTime: () => idle.started === null ? 0 : Math.floor((Date.now() - idle.started) / 1000) }
+  powerMonitor: { getSystemIdleTime: () => idle.started === null ? 0 : Math.floor((Date.now() - idle.started) / 1000), getSystemIdleState: () => idle.locked ? 'locked' : 'active' }
 }))
 vi.mock('node-desktop-idle-v2', () => ({
   desktopIdle: { startMonitoring: vi.fn(), stopMonitoring: vi.fn(), getIdleTime: () => 0 }
@@ -28,6 +28,7 @@ describe('AFK that outlasts a running Long break (Mini breaks enabled)', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-13T00:00:00Z'))
     idle.started = null
+    idle.locked = false
     values = {
       ...defaultSettings,
       naturalBreaksCheckInterval: 2000,
@@ -105,7 +106,9 @@ describe('AFK that outlasts a running Long break (Mini breaks enabled)', () => {
     expect(planner.idlePeriod.completed).toBe(true)
     // A screen-lock / session glitch restarts the OS idle counter from zero.
     idle.started = Date.now()
+    idle.locked = true
     vi.advanceTimersByTime(2 * minute + 2000)
+    idle.locked = false
     comeBack()
     expect(managerReturns).toHaveBeenCalledOnce()
     expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true, reset: false }))
@@ -121,5 +124,14 @@ describe('AFK that outlasts a running Long break (Mini breaks enabled)', () => {
     expect(finished).toHaveBeenCalledOnce()
     expect(finished.mock.calls[0][0].fulfilled).toBeFalsy()
     expect(planner.longBreakNumber).toBe(longBreakNumberBefore)
+  })
+
+  it('recognizes a return even when the idle counter grows after one input', () => {
+    vi.advanceTimersByTime(18 * minute)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(5 * minute)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(4000)
+    expect(managerReturns).toHaveBeenCalledOnce()
   })
 })

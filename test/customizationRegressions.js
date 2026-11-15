@@ -170,4 +170,21 @@ describe('customized usability regressions', () => {
     runInNewContext('updateStatisticsPause()', context)
     expect(context.statistics.resume).toHaveBeenCalledOnce()
   })
+
+  it.each(['microbreakInterval', 'breakInterval'])('settles debt before changing %s and forecasts afterward', key => {
+    const from = main.indexOf("ipcMain.on('save-setting'")
+    const to = main.indexOf("ipcMain.on('update-tray'", from)
+    const calls = []
+    let handler
+    const context = {
+      ipcMain: { on: (_name, callback) => { handler = callback } },
+      statistics: { advance: () => calls.push('advance'), debt: { replan: () => calls.push('replan') } },
+      settings: { set: () => calls.push('set') },
+      updateBreakDebtForecast: () => calls.push('forecast'),
+      updateTray: () => {}
+    }
+    runInNewContext(main.slice(from, to), context)
+    handler({}, key, 3)
+    expect(calls).toEqual(['advance', 'replan', 'set', 'forecast'])
+  })
 })

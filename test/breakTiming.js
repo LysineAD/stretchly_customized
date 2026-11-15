@@ -149,6 +149,14 @@ describe('break reminders and auto-start', () => {
     expect(f.planner.scheduler.delay).toBe(0)
   })
 
+  it('gives a new larger break its own postponement limit after skip-to', () => {
+    const f = setup('long')
+    f.values.largerBreakPostponeLimit = 1
+    f.planner.postponesNumber = 1
+    f.planner.skipToExtendedBreak()
+    expect(f.planner.canPostponeLargerBreak).toBe(true)
+  })
+
   it('holds an already visible countdown while checking AFK', () => {
     const f = setup('long')
     vi.advanceTimersByTime(1200000)

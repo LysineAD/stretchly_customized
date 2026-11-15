@@ -347,6 +347,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToMicrobreak (delay = 0) {
+    this.postponesNumber = 0
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
     this.notificationScheduler = null
@@ -368,6 +369,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToBreak (delay = 0) {
+    this.postponesNumber = 0
     const next = this.largerBreaks(1)[0]
     const pastCurrent = this._isFinishingBreak && larger(this._scheduledBreakType)
     this.idlePeriod = null
@@ -390,6 +392,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToExtendedBreak (delay = 0) {
+    this.postponesNumber = 0
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
     this.notificationScheduler = null

@@ -1,7 +1,7 @@
 import { dateKey } from './localDate.js'
 
 export const workBlock = 120 * 60000
-const timerTolerance = 5000
+const maximumExtra = 6 * 60000
 const finite = value => Number.isFinite(value) ? value : 0
 
 // One full larger-break cycle lasts
@@ -30,25 +30,20 @@ export function breakDebtRate (settings) {
 
 export default class BreakDebt {
   constructor (data = {}) {
-    this.balance = finite(data.balance)
-    this.work = Math.max(0, finite(data.work))
-    this.day = typeof data.day === 'string' ? data.day : null
-    this.plan = Array.from({ length: 3 }, (_, i) => Math.max(0, finite(data.plan?.[i])))
+    this.balance = data.modelVersion === 3 ? finite(data.balance) : 0
+    this.work = data.modelVersion === 3 ? Math.max(0, finite(data.work)) : 0
+    this.day = data.modelVersion === 3 && typeof data.day === 'string' ? data.day : null
+    this.plan = Array.from({ length: 3 }, (_, i) => data.modelVersion === 3 ? Math.max(0, finite(data.plan?.[i])) : 0)
     this.recent = []
+    this.retainSince = null
     this.previousDay = null
-    // An outstanding postponement is unpaid rest, so it must survive a Quit.
-    // Older profiles have no such field and start with none.
-    const delay = data.postponement
-    this.postponement = delay && Number.isFinite(delay.earned)
-      ? { from: finite(delay.from), earned: Math.max(0, finite(delay.earned)), committed: Boolean(delay.committed) }
-      : null
+    this.postponement = null
   }
 
   rollDay (time) {
     const day = dateKey(time)
     if (this.day && day !== this.day) {
       this.previousDay = { date: this.day, balance: this.balance }
-      this.balance = Math.max(0, this.balance)
     }
     this.day = day
   }
@@ -60,14 +55,14 @@ export default class BreakDebt {
     const previous = this.recent.at(-1)
     if (previous?.to === from && previous.kind === kind && previous.rate === rate && previous.day === this.day) previous.to = to
     else this.recent.push({ kind, from, to, rate, day: this.day })
-    this.recent = this.recent.filter(span => span.to > to - 3600000)
+    const cutoff = this.retainSince === null ? to - 3600000 : Math.min(to - 3600000, this.retainSince)
+    this.recent = this.recent.filter(span => span.to > cutoff)
   }
 
   apply (kind, elapsed, rate) {
     if (kind === 'work' && rate > 0) {
       this.work += elapsed
       this.balance += elapsed * rate
-      if (this.postponement && !this.postponement.committed) this.postponement.earned += elapsed * rate
     } else if (kind === 'rest') this.balance -= elapsed
   }
 
@@ -89,72 +84,33 @@ export default class BreakDebt {
       if (span.kind === 'work' && span.rate > 0) {
         this.work -= elapsed
         correction += elapsed * span.rate
-        if (this.postponement) {
-          const postponedWork = Math.max(0, end - Math.max(start, this.postponement.from))
-          this.postponement.earned = Math.max(0, this.postponement.earned - postponedWork * span.rate)
-        }
       }
       if (span.day === this.day) this.balance -= correction
       else if (span.day === this.previousDay?.date) {
-        const before = Math.max(0, this.previousDay.balance)
         this.previousDay.balance -= correction
-        this.balance -= before - Math.max(0, this.previousDay.balance)
+        this.balance -= correction
       }
     }
   }
 
-  postpone (at) {
-    this.postponement ??= { from: at, earned: 0, committed: false }
-  }
+  postpone () {}
 
   forecast (rate, upcoming) {
     if (rate <= 0 || upcoming.length === 0) return 0
-    const boundary = Math.round(this.work / workBlock) * workBlock
-    const atBoundary = upcoming[0].after === 0 && boundary > 0 && Math.abs(this.work - boundary) <= timerTolerance
-    const end = atBoundary ? boundary : Math.max(workBlock, Math.ceil(this.work / workBlock) * workBlock)
-    const remaining = Math.max(0, end - this.work)
-    const baseRest = upcoming.reduce((sum, { after, duration }) => after <= remaining + timerTolerance ? sum + duration : sum, 0)
-    const shortage = Math.max(0, this.balance + remaining * rate - baseRest)
-    // Work during a postponement is already in `balance`, but a credit from
-    // earlier rest can hide it from `shortage`. Keep that earned amount as a
-    // floor for the TOTAL owed, then let the weights below spread it over the
-    // next three larger breaks. Charging it all to the returning break would
-    // bypass the proportional Long/Extended repayment plan.
-    const required = Math.max(shortage, this.postponement?.earned ?? 0)
-    const weights = upcoming.slice(0, 3).map(entry => entry.duration)
-    const planned = this.plan.reduce((sum, value) => sum + value, 0)
-    if (required < planned && planned > 0) {
-      this.plan = this.plan.map(value => value * required / planned)
-    } else if (required > planned) {
-      const total = weights.reduce((sum, weight) => sum + weight, 0)
-      this.plan = weights.map((weight, index) => this.plan[index] + (required - planned) * weight / total)
-    }
-    const payment = this.plan[0]
-    return payment > 0 ? Math.max(1, Math.round(payment)) : 0
+    const next = upcoming.slice(0, 3)
+    const total = next.reduce((sum, entry) => sum + entry.duration, 0)
+    if (total <= 0) return 0
+    const shortage = Math.max(0, this.balance + Math.max(0, next.at(-1).after) * rate - total)
+    this.plan = next.map(entry => shortage * entry.duration / total)
+    return Math.round(Math.min(maximumExtra, this.plan[0]))
   }
 
-  resolve (creditedExtra = 0) {
-    const planned = this.plan[0] ?? 0
-    // An early finish or skip does not consume the slot: keep the whole
-    // three-break plan and the outstanding postponement so the unpaid rest is
-    // re-forecast at the next schedule change instead of disappearing.
-    if (planned > 1 && creditedExtra < planned - 1) return
+  resolve () {
     this.plan.shift()
     this.plan.push(0)
-    if (!this.postponement) return
-    // Serving a slot commits the postponement to the three-slot plan. Freeze
-    // its accrual here: work from now on is ordinary debt in `balance`, not a
-    // second postponement stacked on top of the same repayment plan.
-    this.postponement.committed = true
-    const repaid = Math.min(planned, Math.max(0, creditedExtra))
-    this.postponement.earned = Math.max(0, this.postponement.earned - repaid)
-    if (this.postponement.earned <= 1) this.postponement = null
   }
 
-  // Replanning only discards the forecast, never the unpaid rest itself.
-  // `preserveDelay` exists for callers that explicitly want to drop a
-  // postponement (none do today); the default must be debt-preserving or a
-  // tray "Skip to ..." would silently erase the balance shown in the UI.
+  // Replanning discards only the forecast; the balance remains unchanged.
   replan ({ preserveDelay = true } = {}) {
     this.plan = [0, 0, 0]
     if (!preserveDelay) this.postponement = null
@@ -187,6 +143,7 @@ export default class BreakDebt {
 
   serialize () {
     return {
+      modelVersion: 3,
       balance: this.balance,
       work: this.work,
       day: this.day,

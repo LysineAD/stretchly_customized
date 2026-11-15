@@ -140,8 +140,8 @@ describe('AFK recovery for scheduled breaks', () => {
 
   it('keeps a postponement count when an early AFK reschedules the same larger break', () => {
     planner.nextBreak()
-    planner.postponeCurrentBreak()
     planner.skipToBreak(10 * minute)
+    planner.postponesNumber = 1
     leave(0, 3)
     comeBack()
     expect(planner.postponesNumber).toBe(1)

@@ -120,7 +120,6 @@ export default class BreakStatistics {
     this.episode.hasStarted = true
     this.episode.activeStartedAt = this.now()
     this.episode.duration = duration
-    this.episode.debtCheckpoint = this.debt.checkpoint()
     this.mode = 'break'
     this.breakType = type
     this.onChange()
@@ -150,23 +149,14 @@ export default class BreakStatistics {
     this.onChange()
   }
 
-  // Skipping is not a debt event. Erase the rest credit recorded for the break
-  // window, then finish the episode so "Without delay %" still counts the skip.
+  // Skipping adds no penalty; elapsed rest remains credited.
   skip () {
-    const checkpoint = this.episode?.debtCheckpoint ?? this.debt.checkpoint()
     this.advance()
-    this.debt.rollback(checkpoint)
     this.finish(false)
   }
 
-  // Jumping to a different break or resetting the schedule is also a skip:
-  // it must not credit the abandoned break window as rest, wipe the
-  // postponement or clear the repayment plan. Unlike skip() it does not count
-  // a completed break in "Without delay %", matching the previous behaviour.
   abandon () {
-    const checkpoint = this.episode?.debtCheckpoint ?? null
     this.advance()
-    if (checkpoint) this.debt.rollback(checkpoint)
     this.cancel()
   }
 

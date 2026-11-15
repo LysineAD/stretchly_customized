@@ -1392,7 +1392,7 @@ function finishMicrobreak (shouldPlaySound = true, shouldPlanNext = true, option
 
 function finishBreak (shouldPlaySound = true, shouldPlanNext = true, options = {}) {
   if (!breakWins) return
-  if (options.skipped) {
+  if (options.skipped || (shouldPlanNext && statistics?.episode && (!statistics.episode.hasStarted || Date.now() - statistics.episode.activeStartedAt < statistics.episode.duration))) {
     statistics?.skip()
   } else {
     statistics?.advance()
@@ -1413,7 +1413,7 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true, options = {
 
 function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true, options = {}) {
   if (!extendedBreakWins) return
-  if (options.skipped) {
+  if (options.skipped || (shouldPlanNext && statistics?.episode && (!statistics.episode.hasStarted || Date.now() - statistics.episode.activeStartedAt < statistics.episode.duration))) {
     statistics?.skip()
   } else {
     statistics?.advance()
@@ -1992,7 +1992,7 @@ ipcMain.on('save-setting', function (event, key, value) {
     return
   }
 
-  if (['breakDuration', 'extendedBreakDuration', 'break', 'extendedBreak', 'extendedBreakInterval'].includes(key)) {
+  if (['breakDuration', 'extendedBreakDuration', 'break', 'extendedBreak', 'extendedBreakInterval', 'microbreakInterval', 'breakInterval'].includes(key)) {
     statistics?.advance()
     statistics?.debt.replan({ preserveDelay: true })
   }
@@ -2070,7 +2070,7 @@ ipcMain.on('save-setting', function (event, key, value) {
   }
 
   settings.set(key, value)
-  if (['breakDuration', 'extendedBreakDuration', 'break', 'extendedBreak', 'extendedBreakInterval'].includes(key)) updateBreakDebtForecast()
+  if (['breakDuration', 'extendedBreakDuration', 'break', 'extendedBreak', 'extendedBreakInterval', 'microbreakInterval', 'breakInterval'].includes(key)) updateBreakDebtForecast()
 
   updateTray()
 })

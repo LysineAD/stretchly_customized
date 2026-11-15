@@ -85,7 +85,7 @@ class NaturalBreaksManager extends EventEmitter {
       if (this.pendingReturn) {
         const pending = this.pendingReturn
         this.pendingReturn = null
-        if (idleTime > previousIdleTime + 500) {
+        if (idleTime > previousIdleTime + 500 && powerMonitor.getSystemIdleState?.(1) === 'locked') {
           // The OS idle counter restarted (screen lock / session glitch) while
           // the user is still away. Keep the same absence open instead of
           // reporting a return that would restart the countdown too early.
