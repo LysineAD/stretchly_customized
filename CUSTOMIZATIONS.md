@@ -1,6 +1,6 @@
 # Stretchly Customized: customization inventory
 
-Updated: 2026-11-14. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
+Updated: 2026-11-15. This file records the active feature contract for future edits and upstream updates. Source: [LysineAD/stretchly_customized](https://github.com/LysineAD/stretchly_customized), branch `trunk`. Upstream baseline: Stretchly **v1.22.1**.
 
 ## Current app and settings
 
@@ -36,7 +36,22 @@ Updated: 2026-11-14. This file records the active feature contract for future ed
 
 One Postpone remains normal; the badge still shows +1. A second press shows +2 and makes the completed break delayed for the single percentage. Intentional Reset and Pause do not count as skipped outcomes. Auto-start runs on every reminder, with no auto-start/deadline text added to the window.
 
+## Purpose and boundaries for future changes
+
+- The goal is a sustainable long-run average of larger-break rest per active-work minute, not an exact daily quota. Debt and surplus carry across days; natural variation is acceptable, but persistent shortfall or excessive catch-up is not.
+- Skip, Postpone, Reset and early Finish do not add a penalty. Actual partial larger-break rest counts; qualifying idle counts once, including overlap with a timer. Mini breaks are shown in statistics but are not larger-break debt payments.
+- The shortage forecast uses the next three scheduled larger breaks and their durations as weights. A 4/4/12 sequence has 1:1:3 forecast shares. Each addition is capped at six minutes; any balance beyond the cap stays for later forecasts. Shares are recalculated as the schedule changes, not locked to a specific three-break batch.
+- The model carries signed balance, work and forecast state locally. Loading legacy debt without model version 3 resets the old debt state; seven-day statistics are retained. The break window itself is not restored after restart.
+- Do not replace the working model merely to satisfy an exact two-hour or daily quota. A proposed replacement must compare actual rest, surplus, carried debt and individual break lengths over multiple days, including skips, postpones, partial breaks, idle and recovery. The 42-day simulation is evidence for a candidate under its assumptions, not a guarantee for every behavior.
+- Preserve upstream behavior and existing settings when modifying custom features. Windows is the delivery target; other platforms and native multiple-monitor behavior need their own verification.
+
+## History
+
+The current balance model and the preceding idle, skip and cadence fixes are in `9f4d8e5`. This model supersedes the fixed-block and separate postponement-debt rules recorded in older audit and changelog entries. Earlier feature iterations remain in Git history and [CUSTOM_CODE_AUDIT.md](CUSTOM_CODE_AUDIT.md); treat those records as historical, not as the current contract.
+
 ## Iterations and obsolete behavior
+
+The entries below describe past implementations; current behavior is defined above and in [STATISTICS.md](STATISTICS.md).
 
 | Stage | Record |
 | --- | --- |
@@ -67,7 +82,7 @@ Old `startBreakShortcut` settings are ignored; no separate Start shortcut is reg
 | Display / mouse routing | `app/utils/breakDisplaySettings.js`, `breakWindowPresentation.js`, `breakPresentation.js`, `app/css/break.css` |
 | Waiting / auto-start / shared key | `app/utils/breakStartController.js`, `breakStartControl.js`, `breakActionShortcut.js`, both break renderers, `app/main.js` |
 | Preferences / defaults / labels | `app/preferences.html`, `preferences-renderer.js`, `css/preferences.css`, `utils/defaultSettings.js`, `locales/en.json` |
-| Statistics | Only Break time, Without delay %, Average stretch and Computer use are displayed, with Today and 7-day avg/day columns. Time totals are divided by seven; rates and stretch averages use their underlying seven-day samples. A small +N badge beside Postpone counts each press. Zero/one Postpone is normal; more, Skip or an early ending lower the one percentage. No lifetime, longest-stretch, type breakdown, current-work headline or planned-interval display. Only seven dates persist, in both main and backup files. See [STATISTICS.md](STATISTICS.md). |
+| Statistics | `app/utils/breakStatistics.js`, `breakStatisticsView.js`, `statisticsFile.js`, [definitions](STATISTICS.md) |
 | Break debt / average rest | `app/utils/breakDebt.js` (rate, forecast, resolve), `app/main.js` (`updateBreakDebtForecast`), `app/utils/breakStatistics.js`, `scripts/check-break-average.mjs`, `test/breakDebt.js`, [definitions](STATISTICS.md) |
 | Evidence / rebuilding | Regression tests under `test/`; Windows check scripts under `scripts/`; [update guide](UPDATING.md) |
 

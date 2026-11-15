@@ -1,5 +1,7 @@
 # Custom code audit — 2026-10-16
 
+**Historical record:** debt and skip details below predate the model in commit `9f4d8e5`. Use [CUSTOMIZATIONS.md](CUSTOMIZATIONS.md) and [STATISTICS.md](STATISTICS.md) for current behavior.
+
 Scope: the Extended, display/click-through, manual Start, auto-start, shared shortcut, tray, Preferences and idle customizations relative to upstream v1.22.1 (`d150ac4`), plus this revision. Unchanged upstream code was excluded. Codex performed the implementation and audit, including independent standards and specification review passes.
 
 ## Standards
