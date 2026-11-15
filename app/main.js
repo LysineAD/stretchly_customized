@@ -1468,8 +1468,8 @@ function postponeExtendedBreak () {
 
 function skipToMicrobreak (delay) {
   closeBreakNotice()
-  statistics?.cancel()
-  statistics?.debt.replan()
+  statistics?.abandon()
+  statistics?.debt.replan({ preserveDelay: true })
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1494,8 +1494,8 @@ function skipToMicrobreak (delay) {
 
 function skipToBreak (delay) {
   closeBreakNotice()
-  statistics?.cancel()
-  statistics?.debt.replan()
+  statistics?.abandon()
+  statistics?.debt.replan({ preserveDelay: true })
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1520,8 +1520,8 @@ function skipToBreak (delay) {
 
 function skipToExtendedBreak (delay) {
   closeBreakNotice()
-  statistics?.cancel()
-  statistics?.debt.replan()
+  statistics?.abandon()
+  statistics?.debt.replan({ preserveDelay: true })
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1546,8 +1546,8 @@ function skipToExtendedBreak (delay) {
 
 function resetBreaks () {
   closeBreakNotice()
-  statistics?.cancel()
-  statistics?.debt.replan()
+  statistics?.abandon()
+  statistics?.debt.replan({ preserveDelay: true })
   if (microbreakWins) {
     microbreakWins = breakComplete(false, microbreakWins)
   }

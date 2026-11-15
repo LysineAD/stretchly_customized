@@ -305,6 +305,104 @@ describe('break debt audit (schedule-aligned cumulative ledger)', () => {
     expect(debt.balance).toBeGreaterThan(0)
   })
 
+  it('replanning by default keeps the postponement that the UI displays', () => {
+    const debt = new BreakDebt()
+    debt.balance = -26 * minute
+    debt.record('work', at, at + 40 * minute, rate)
+    debt.postpone(at + 40 * minute)
+    debt.postponement.earned = 4 * minute
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const visible = Math.max(0, debt.balance, debt.postponement.earned)
+    debt.replan()
+    expect(debt.plan).toEqual([0, 0, 0])
+    expect(debt.postponement?.earned).toBe(4 * minute)
+    expect(Math.max(0, debt.balance, debt.postponement?.earned ?? 0)).toBe(visible)
+  })
+
+  it('an early break finish does not consume the three-break plan or the postponement', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 100 * minute, rate)
+    debt.postpone(at + 100 * minute)
+    debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const plan = [...debt.plan]
+    const earned = debt.postponement.earned
+    debt.resolve(0)
+    expect(debt.plan).toEqual(plan)
+    expect(debt.postponement?.earned).toBe(earned)
+    // The next forecast still spreads the unpaid rest by Long/Extended length.
+    expect(debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))).toBeGreaterThan(0)
+  })
+
+  it('a full repayment consumes exactly one slot and retires the postponement', () => {
+    const debt = new BreakDebt()
+    debt.record('work', at, at + 100 * minute, rate)
+    debt.postpone(at + 100 * minute)
+    const payment = debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    const remaining = [...debt.plan.slice(1), 0]
+    debt.resolve(payment)
+    expect(debt.plan).toEqual(remaining)
+    expect(debt.postponement).toBeNull()
+  })
+
+  it('a credit-backed postponement is repaid over all three slots, not lost after the first', () => {
+    const debt = new BreakDebt()
+    debt.balance = -26 * minute
+    debt.work = 100 * minute
+    debt.postpone(at)
+    debt.postponement.earned = 4 * minute
+    const upcoming = projected([0, 40, 80], [4, 4, 12])
+    let repaid = 0
+    for (let slot = 0; slot < 3; slot++) {
+      const payment = debt.forecast(rate, upcoming)
+      if (slot === 0) expect(debt.plan[2] / debt.plan[0]).toBeCloseTo(3, 6)
+      repaid += payment
+      debt.resolve(payment)
+      const owed = 4 * minute - repaid
+      expect(debt.plan.reduce((sum, value) => sum + value, 0)).toBeCloseTo(owed, 0)
+      expect(Math.max(0, debt.balance, debt.postponement?.earned ?? 0)).toBeCloseTo(owed, 0)
+    }
+    expect(repaid).toBeCloseTo(4 * minute, 0)
+    expect(debt.postponement).toBeNull()
+  })
+
+  it('freezes the postponement accrual once its three-slot plan starts repaying, even across a restart', () => {
+    const debt = new BreakDebt()
+    debt.balance = -26 * minute
+    debt.work = 100 * minute
+    debt.postpone(at)
+    debt.postponement.earned = 4 * minute
+    const upcoming = projected([0, 40, 80], [4, 4, 12])
+    debt.resolve(debt.forecast(rate, upcoming))
+    const earnedAfter = debt.postponement.earned
+    expect(debt.postponement.committed).toBe(true)
+    debt.record('work', at + minute, at + 41 * minute, rate)
+    expect(debt.postponement.earned).toBe(earnedAfter)
+    const restarted = new BreakDebt(JSON.parse(JSON.stringify(debt.serialize())))
+    expect(restarted.postponement.committed).toBe(true)
+    restarted.record('work', at + 41 * minute, at + 81 * minute, rate)
+    expect(restarted.postponement.earned).toBe(earnedAfter)
+  })
+
+  it('abandoning a running break keeps the ledger exactly as it was at break start', () => {
+    let now = at
+    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
+    stats.debt.balance = 8 * minute
+    stats.debt.work = 100 * minute
+    stats.debt.postpone(at)
+    stats.debt.postponement.earned = 3 * minute
+    stats.debt.forecast(rate, projected([0, 40, 80], [4, 4, 12]))
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    now += 10000
+    stats.start('long', 4 * minute)
+    const atBreakStart = JSON.stringify(stats.debt.serialize())
+    now += 3 * minute
+    stats.advance()
+    expect(JSON.stringify(stats.debt.serialize())).not.toBe(atBreakStart)
+    stats.abandon()
+    expect(JSON.stringify(stats.debt.serialize())).toBe(atBreakStart)
+    expect(stats.episode).toBeNull()
+  })
+
   it('never charges one break the whole three-break plan', () => {
     const debt = new BreakDebt()
     debt.record('work', at, at + 60 * minute, rate)

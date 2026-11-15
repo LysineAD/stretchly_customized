@@ -107,3 +107,76 @@ describe('tray Skip is not a time-debt event', () => {
     expect(statistics.debt.balance).toBe(before)
   })
 })
+
+const skipToHarness = () => {
+  let now = new Date(2026, 10, 13, 9).getTime()
+  const statistics = new BreakStatistics({ now: () => now, debtRate: () => rate })
+  const context = {
+    statistics,
+    closeBreakNotice: vi.fn(),
+    increaseDanger: vi.fn(),
+    breakComplete: () => null,
+    log: { info: vi.fn() },
+    updateTray: vi.fn(),
+    danger: 0,
+    microbreakWins: null,
+    breakWins: null,
+    extendedBreakWins: null,
+    breakPlanner: {
+      skipToMicrobreak: vi.fn(),
+      skipToBreak: vi.fn(),
+      skipToExtendedBreak: vi.fn(),
+      reset: vi.fn()
+    },
+    Date: { now: () => now }
+  }
+  return { context, statistics, tick: ms => { now += ms } }
+}
+
+// Every entry under tray "Skip to the next ...", plus "Reset breaks", used to
+// call debt.replan(), which wiped the postponement and the three-break plan.
+describe('skip-to and reset actions are not time-debt events', () => {
+  const entries = ['skipToMicrobreak', 'skipToBreak', 'skipToExtendedBreak', 'resetBreaks']
+
+  it.each(entries)('%s keeps the visible debt and the postponement', name => {
+    const { context, statistics } = skipToHarness()
+    // Earlier rest left a credit, so the UI debt is carried entirely by the
+    // postponement earned during repeated postpones.
+    statistics.debt.balance = -26 * minute
+    statistics.debt.work = 100 * minute
+    statistics.debt.postpone(context.Date.now())
+    statistics.debt.postponement.earned = 4 * minute
+    statistics.debt.forecast(rate, upcoming)
+    const before = statistics.snapshot().current.debtTotal
+    expect(before).toBe(4 * minute)
+
+    runInNewContext(sourceOf(name) + '\n' + name + '()', context)
+
+    expect(statistics.snapshot().current.debtTotal).toBe(before)
+    expect(statistics.debt.postponement?.earned).toBe(4 * minute)
+    expect(statistics.debt.balance).toBe(-26 * minute)
+  })
+
+  it.each(entries)('%s does not bank the abandoned break window as rest', name => {
+    const { context, statistics, tick } = skipToHarness()
+    statistics.debt.balance = 8 * minute
+    statistics.debt.work = 100 * minute
+    statistics.debt.postpone(context.Date.now())
+    statistics.debt.postponement.earned = 3 * minute
+    statistics.debt.forecast(rate, upcoming)
+    statistics.offer({ type: 'long', baseDuration: 4 * minute })
+    tick(10000)
+    statistics.start('long', 4 * minute)
+    const atBreakStart = statistics.debt.balance
+    tick(3 * minute)
+    statistics.advance()
+    expect(statistics.debt.balance).toBeLessThan(atBreakStart)
+
+    runInNewContext(sourceOf(name) + '\n' + name + '()', context)
+
+    // The skipped window earns no rest credit and the postponement survives.
+    expect(statistics.debt.balance).toBe(atBreakStart)
+    expect(statistics.debt.postponement?.earned).toBe(3 * minute)
+    expect(statistics.snapshot().current.debtTotal).toBeGreaterThanOrEqual(3 * minute)
+  })
+})

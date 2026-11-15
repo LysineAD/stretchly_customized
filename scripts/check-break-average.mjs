@@ -19,12 +19,14 @@
 // the ideal daily total without being part of r. Debt carried to tomorrow
 // counts as today's rest for this check, as specified.
 //
-// Randomized settings and skip/postpone behaviour must satisfy five things:
+// Randomized settings and skip/postpone behaviour must satisfy seven things:
 //   1. r equals the schedule's larger-break average for every settings set
 //   2. R + B == r*W (nothing is lost or invented)
 //   3. (all rest taken + debt carried) == the ideal daily average rest
 //   4. a Quit/restart in the middle of the day loses no debt, plan or delay
 //   5. one break is never charged more than its slot in the three-break plan
+//   6. a tray "Skip to ...", "Reset breaks" or early finish loses no debt
+//   7. the three slots repay the whole postponement, not just the first one
 
 import BreakDebt, { breakDebtRate } from '../app/utils/breakDebt.js'
 
@@ -82,6 +84,7 @@ const simulate = (settings, seed) => {
   const cadence = cadenceOf(settings)
   const skipChance = rnd() * 0.5
   const postponeChance = rnd() * 0.3
+  const skipToChance = rnd() * 0.3
   let debt = new BreakDebt()
   let clock = new Date(2026, 10, 14, 9).getTime()
   let work = 0
@@ -90,6 +93,7 @@ const simulate = (settings, seed) => {
   let ordinal = 1
   let restartViolations = 0
   let spreadViolations = 0
+  let skipToViolations = 0
   const upcoming = () => [0, 1, 2, 3].map(i => ({ after: i * cadence, duration: largerDuration(settings, ordinal + i) }))
 
   while (work < dayWork) {
@@ -120,6 +124,17 @@ const simulate = (settings, seed) => {
       largerRest += duration
       allRest += duration
       debt.resolve(payment)
+    }
+    // A tray "Skip to ...", "Reset breaks" or an early finish is not a debt
+    // event. All three used to call replan()/resolve() in a way that wiped the
+    // postponement, which is the only thing keeping the debt visible after
+    // earlier rest left a credit.
+    if (rnd() < skipToChance) {
+      const visibleBefore = Math.max(0, debt.balance, debt.postponement?.earned ?? 0)
+      if (rnd() < 0.5) debt.replan()
+      else debt.resolve(0)
+      const visibleAfter = Math.max(0, debt.balance, debt.postponement?.earned ?? 0)
+      if (visibleAfter < visibleBefore - 1) skipToViolations++
     }
     // A tray Skip is debt-neutral: no rest credit, no resolve, no plan shift.
 
@@ -158,6 +173,7 @@ const simulate = (settings, seed) => {
     postponeChance,
     restartViolations,
     spreadViolations,
+    skipToViolations,
     rateError: Math.abs(rate - largerIdeal) / largerIdeal,
     conservationError: Math.abs(largerRest + debt.balance - rate * work),
     unpaidFraction: Math.max(0, debt.balance) / Math.max(1, rate * work),
@@ -192,6 +208,31 @@ const live = {
 const liveRate = breakDebtRate({ get: key => live[key] })
 const liveIdeal = idealRate(live)
 const liveLargerIdeal = largerIdealRate(live)
+
+// A credit from earlier rest hides the postponement from `shortage`, so the
+// three-slot plan is backed entirely by `earned`. Retiring the postponement
+// after slot 0 would let the next forecast() scale slots 1 and 2 to zero.
+const threeSlotRepayment = () => {
+  const debt = new BreakDebt()
+  debt.balance = -26 * minute
+  debt.work = 100 * minute
+  debt.postpone(0)
+  debt.postponement.earned = 4 * minute
+  const upcoming = [0, 1, 2, 3].map(i => ({ after: i * 40 * minute, duration: [4, 4, 12, 4][i] * minute }))
+  let repaid = 0
+  let lost = 0
+  for (let slot = 0; slot < 3; slot++) {
+    const payment = debt.forecast(liveRate, upcoming)
+    repaid += payment
+    debt.resolve(payment)
+    const owed = Math.max(0, 4 * minute - repaid)
+    const remaining = debt.plan.reduce((sum, value) => sum + value, 0)
+    const visible = Math.max(0, debt.balance, debt.postponement?.earned ?? 0)
+    if (Math.abs(remaining - owed) > 1 || Math.abs(visible - owed) > 1) lost++
+  }
+  return { repaid, lost }
+}
+
 const liveRows = []
 for (let seed = 1; seed <= 200; seed++) liveRows.push(simulate(live, seed * 15485863))
 const allRows = [...rows, ...liveRows]
@@ -216,11 +257,15 @@ const conservationErrors = allRows.filter(row => row.conservationError > 1).leng
 const rateErrors = allRows.filter(row => row.rateError > 1e-9).length
 const restartErrors = allRows.reduce((sum, row) => sum + row.restartViolations, 0)
 const spreadErrors = allRows.reduce((sum, row) => sum + row.spreadViolations, 0)
+const skipToErrors = allRows.reduce((sum, row) => sum + row.skipToViolations, 0)
 const liveCoverage = summarize(liveRows, 'coverageWithDebt')
 const randomCoverage = summarize(rows, 'coverageWithDebt')
 const liveUnpaid = summarize(liveRows, 'unpaidFraction')
+const repayment = threeSlotRepayment()
 console.log(`\nConservation violations: ${conservationErrors} (expect 0). Rate mismatches: ${rateErrors} (expect 0).`)
 console.log(`Restart losses: ${restartErrors} (expect 0). Over-charged breaks: ${spreadErrors} (expect 0).`)
+console.log(`Skip-to/reset/early-finish debt losses: ${skipToErrors} (expect 0).`)
+console.log(`Three-slot repayment: ${(repayment.repaid / minute).toFixed(2)} of 4.00 min repaid, lost slots: ${repayment.lost} (expect 0).`)
 
 let failed = false
 const check = (ok, message) => {
@@ -230,7 +275,10 @@ const check = (ok, message) => {
 check(conservationErrors === 0, 'the ledger never loses or invents rest; debt is carried or repaid, never silently cleared')
 check(rateErrors === 0, 'the owed rate equals the schedule’s own larger-break average for every settings set')
 check(restartErrors === 0, 'a mid-day Quit/restart preserves the balance, visible debt, postponement and three-break plan')
+check(skipToErrors === 0, 'a tray "Skip to ...", "Reset breaks" or early finish never lowers the visible debt')
 check(spreadErrors === 0, 'no single break is charged more than its proportional slot in the three-break plan')
+check(repayment.lost === 0 && Math.abs(repayment.repaid - 4 * minute) <= 1,
+  'a credit-backed postponement is repaid across all three slots, never lost after the first')
 check(liveCoverage.mean >= 0.98 && randomCoverage.mean >= 0.98 &&
   liveCoverage.max <= 1.35 && randomCoverage.max <= 1.35,
   `a day with random skips/postpones reaches the ideal average rest without over-crediting (live mean ${percent(liveCoverage.mean)}, max ${percent(liveCoverage.max)})`)

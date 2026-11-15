@@ -40,7 +40,7 @@ export default class BreakDebt {
     // Older profiles have no such field and start with none.
     const delay = data.postponement
     this.postponement = delay && Number.isFinite(delay.earned)
-      ? { from: finite(delay.from), earned: Math.max(0, finite(delay.earned)) }
+      ? { from: finite(delay.from), earned: Math.max(0, finite(delay.earned)), committed: Boolean(delay.committed) }
       : null
   }
 
@@ -67,7 +67,7 @@ export default class BreakDebt {
     if (kind === 'work' && rate > 0) {
       this.work += elapsed
       this.balance += elapsed * rate
-      if (this.postponement) this.postponement.earned += elapsed * rate
+      if (this.postponement && !this.postponement.committed) this.postponement.earned += elapsed * rate
     } else if (kind === 'rest') this.balance -= elapsed
   }
 
@@ -104,7 +104,7 @@ export default class BreakDebt {
   }
 
   postpone (at) {
-    this.postponement ??= { from: at, earned: 0 }
+    this.postponement ??= { from: at, earned: 0, committed: false }
   }
 
   forecast (rate, upcoming) {
@@ -134,14 +134,28 @@ export default class BreakDebt {
   }
 
   resolve (creditedExtra = 0) {
-    const planned = this.plan.shift()
-    const unpaid = Math.max(0, planned - creditedExtra)
+    const planned = this.plan[0] ?? 0
+    // An early finish or skip does not consume the slot: keep the whole
+    // three-break plan and the outstanding postponement so the unpaid rest is
+    // re-forecast at the next schedule change instead of disappearing.
+    if (planned > 1 && creditedExtra < planned - 1) return
+    this.plan.shift()
     this.plan.push(0)
-    if (unpaid > 1) this.plan = [0, 0, 0]
-    this.postponement = null
+    if (!this.postponement) return
+    // Serving a slot commits the postponement to the three-slot plan. Freeze
+    // its accrual here: work from now on is ordinary debt in `balance`, not a
+    // second postponement stacked on top of the same repayment plan.
+    this.postponement.committed = true
+    const repaid = Math.min(planned, Math.max(0, creditedExtra))
+    this.postponement.earned = Math.max(0, this.postponement.earned - repaid)
+    if (this.postponement.earned <= 1) this.postponement = null
   }
 
-  replan ({ preserveDelay = false } = {}) {
+  // Replanning only discards the forecast, never the unpaid rest itself.
+  // `preserveDelay` exists for callers that explicitly want to drop a
+  // postponement (none do today); the default must be debt-preserving or a
+  // tray "Skip to ..." would silently erase the balance shown in the UI.
+  replan ({ preserveDelay = true } = {}) {
     this.plan = [0, 0, 0]
     if (!preserveDelay) this.postponement = null
   }
@@ -178,7 +192,7 @@ export default class BreakDebt {
       day: this.day,
       plan: this.plan,
       postponement: this.postponement
-        ? { from: this.postponement.from, earned: this.postponement.earned }
+        ? { from: this.postponement.from, earned: this.postponement.earned, committed: this.postponement.committed }
         : null
     }
   }

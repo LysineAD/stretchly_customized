@@ -159,6 +159,17 @@ export default class BreakStatistics {
     this.finish(false)
   }
 
+  // Jumping to a different break or resetting the schedule is also a skip:
+  // it must not credit the abandoned break window as rest, wipe the
+  // postponement or clear the repayment plan. Unlike skip() it does not count
+  // a completed break in "Without delay %", matching the previous behaviour.
+  abandon () {
+    const checkpoint = this.episode?.debtCheckpoint ?? null
+    this.advance()
+    if (checkpoint) this.debt.rollback(checkpoint)
+    this.cancel()
+  }
+
   cancel () {
     this.advance()
     this.episode = null
