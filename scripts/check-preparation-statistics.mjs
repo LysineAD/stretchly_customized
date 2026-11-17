@@ -196,7 +196,7 @@ for (const type of ['mini', 'long', 'extended']) {
     assert.equal(period.withoutDelay, 1)
     assert.ok(period.breakMs >= 2900)
     assert.equal(saved.lifetime, undefined)
-    assert.ok(Number.isFinite(saved.debt.balance))
+    assert.ok(Number.isFinite(saved.debt.amount))
     reports.push({ type, postponed: type === 'mini', automaticStart: true, saved: period })
     console.log(type + ': auto-start, minimal statistics and persisted debt passed')
   } finally {

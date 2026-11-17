@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-- Replace break debt with schedule-aligned work/rest accounting, proportional forecasts and a six-minute maximum addition. Preserve surplus and unpaid balance across days; reset legacy debt while retaining statistics.
+- Replace the signed-balance debt model with event-based Postpone, Skip and Reset accounting. Preserve unpaid debt and assigned shares; qualifying idle pays only the immediate break’s extra share. Earlier entries below describe superseded implementations.
 
 - Fix idle return detection, overlapping postponement debt, idle corrections to committed debt, skipped or prematurely finished break accounting, cadence-change forecasts, and postponement limits after Skip to a different break. An idle-counter reset is held open when Windows reports the session locked; an unlocked reset cannot be distinguished from a real return using the idle counter alone.
 - Fix **time debt disappearing after any Skip to the next ... or Reset breaks**: `skipToMicrobreak`, `skipToBreak`, `skipToExtendedBreak` and `resetBreaks` all called a bare `statistics.debt.replan()`, which cleared both the outstanding postponement and the three-break repayment plan. When earlier rest had left a credit, that postponement was the only thing keeping Total time debt visible, so the UI fell to 0. These paths now use `BreakStatistics.abandon()` (a debt-neutral close of the abandoned break window) and `replan({ preserveDelay: true })`.

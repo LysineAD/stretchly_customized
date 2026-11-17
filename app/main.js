@@ -24,7 +24,7 @@ import IdeasLoader from './utils/ideasLoader.js'
 import BreaksPlanner from './breaksPlanner.js'
 import BreakStatistics from './utils/breakStatistics.js'
 import StatisticsFile from './utils/statisticsFile.js'
-import { breakDebtRate, workBlock } from './utils/breakDebt.js'
+import { breakDebtRate } from './utils/breakDebt.js'
 import AppIcon from './utils/appIcon.js'
 import { UntilMorning } from './utils/untilMorning.js'
 import AutostartManager from './utils/autostartManager.js'
@@ -387,6 +387,15 @@ async function initialize (isAppStart = true) {
     statistics = new BreakStatistics({
       data: await statisticsFile.load(),
       debtRate: () => breakDebtRate(settings),
+      debtSettings: () => {
+        const longInterval = settings.get('microbreakInterval') * (settings.get('breakInterval') + 1)
+        return {
+          longInterval,
+          cycleInterval: longInterval * (settings.get('extendedBreak') ? settings.get('extendedBreakInterval') : 1),
+          longDuration: settings.get('breakDuration'),
+          extendedDuration: settings.get('extendedBreak') ? settings.get('extendedBreakDuration') : 0
+        }
+      },
       onChange: () => {
         statisticsCache = null
         statisticsFile.schedule(() => statistics.serialize())
@@ -438,18 +447,31 @@ async function initialize (isAppStart = true) {
       closeBreakNotice()
       breakStartController.pause()
     })
+    breakPlanner.on('idleCaptured', period => {
+      const next = breakPlanner.largerBreaks(3)
+      statistics.advance()
+      period.debtDurations = next.map(entry => entry.duration)
+      statistics.debt.shares(period.debtDurations)
+    })
     breakPlanner.on('resumeWaitingBreak', () => breakStartController.resume())
-    breakPlanner.on('closeForIdle', ({ completed }) => {
+    breakPlanner.on('closeForIdle', ({ completed, idleTime }) => {
+      if (idleTime) statistics.observeIdle(idleTime, breakPlanner.naturalBreaksManager.thresholds.short)
       if (microbreakWins) microbreakWins = breakComplete(false, microbreakWins, 'mini')
       if (breakWins) breakWins = breakComplete(false, breakWins, 'long')
       if (extendedBreakWins) extendedBreakWins = breakComplete(false, extendedBreakWins, 'long')
-      statistics.finish(completed)
+      statistics.finish(completed, { idle: true })
+    })
+    breakPlanner.on('idleDebtRecovery', ({ period, idleTime, fulfilled, reset }) => {
+      if (period.type && (!period.completed || period.fulfilledWhileIdle)) {
+        const type = period.type === 'extendedBreak' ? 'extended' : 'long'
+        const duration = settings.get(period.type + 'Duration')
+        const assigned = statistics.debt.shares(period.debtDurations)[0] || 0
+        statistics.idleRecovery(type, idleTime, duration, assigned, fulfilled || (reset && type === 'extended'))
+      }
+      if (reset) statistics.session.finishIdleSession()
     })
     breakPlanner.on('idleRecoveryFinished', ({ fulfilled, reset }) => {
       if (fulfilled || reset) {
-        // Clearing the forecast plan is fine, but the postponement balance is
-        // unpaid rest and must survive an AFK-fulfilled break / AFK reset.
-        statistics.debt.replan({ preserveDelay: true })
         statistics.cancel()
       }
       statistics.observeIdle(0, breakPlanner.naturalBreaksManager.thresholds.short)
@@ -1101,9 +1123,7 @@ function startMicrobreak () {
 function updateBreakDebtForecast () {
   if (!statistics || breakPlanner.idlePeriod?.held || !breakPlanner.scheduler?.reference) return 0
   statistics.advance()
-  const cadence = breakPlanner.activeBreakCadence
-  const count = Number.isFinite(cadence) && cadence > 0 ? Math.max(3, Math.ceil(workBlock / cadence) + 1) : 3
-  return statistics.debt.forecast(statistics.debtRate(), breakPlanner.largerBreaks(count))
+  return Math.round(statistics.debt.shares(breakPlanner.largerBreaks(3).map(entry => entry.duration))[0] || 0)
 }
 
 function startBreak (type = 'long') {
@@ -1397,7 +1417,6 @@ function finishBreak (shouldPlaySound = true, shouldPlanNext = true, options = {
   } else {
     statistics?.advance()
     const episode = statistics?.episode
-    if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('breakDuration'))))
     if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
     else statistics?.cancel()
   }
@@ -1418,7 +1437,6 @@ function finishExtendedBreak (shouldPlaySound = true, shouldPlanNext = true, opt
   } else {
     statistics?.advance()
     const episode = statistics?.episode
-    if (shouldPlanNext) statistics?.debt.resolve(Math.max(0, (episode?.timerMs ?? 0) - (episode?.baseDuration ?? settings.get('extendedBreakDuration'))))
     if (shouldPlanNext) statistics?.finish(Boolean(episode?.hasStarted && Date.now() - episode.activeStartedAt >= episode.duration))
     else statistics?.cancel()
   }
@@ -1446,7 +1464,6 @@ function postponeBreak () {
   if (!breakWins || breakPlanner.scheduler?.reference !== 'finishBreak' ||
     !settings.get('breakPostpone') || !breakPlanner.canPostponeLargerBreak) return
   statistics?.postpone()
-  statistics?.debt.postpone(Date.now())
   increaseDanger(1)
   breakWins = breakComplete(false, breakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1458,7 +1475,6 @@ function postponeExtendedBreak () {
   if (!extendedBreakWins || breakPlanner.scheduler?.reference !== 'finishExtendedBreak' ||
     !settings.get('extendedBreakPostpone') || !breakPlanner.canPostponeLargerBreak) return
   statistics?.postpone()
-  statistics?.debt.postpone(Date.now())
   increaseDanger(1)
   extendedBreakWins = breakComplete(false, extendedBreakWins, 'long')
   breakPlanner.postponeCurrentBreak()
@@ -1466,10 +1482,24 @@ function postponeExtendedBreak () {
   updateTray()
 }
 
+function recordScheduleJump (target) {
+  if (!statistics) return
+  statistics.advance()
+  if (statistics.episode && statistics.episode.type !== 'mini') statistics.skip()
+  else {
+    const next = breakPlanner.largerBreaks(1)[0]
+    const skipping = target === 'microbreak'
+      ? breakPlanner._scheduledBreakType !== 'microbreak'
+      : next?.type !== target
+    if (next && skipping) statistics.skipLarger(next.type === 'extendedBreak' ? 'extended' : 'long', next.duration)
+    statistics.abandon()
+  }
+  statistics.debt.replan()
+}
+
 function skipToMicrobreak (delay) {
   closeBreakNotice()
-  statistics?.abandon()
-  statistics?.debt.replan({ preserveDelay: true })
+  recordScheduleJump('microbreak')
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1494,8 +1524,7 @@ function skipToMicrobreak (delay) {
 
 function skipToBreak (delay) {
   closeBreakNotice()
-  statistics?.abandon()
-  statistics?.debt.replan({ preserveDelay: true })
+  recordScheduleJump('break')
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1520,8 +1549,7 @@ function skipToBreak (delay) {
 
 function skipToExtendedBreak (delay) {
   closeBreakNotice()
-  statistics?.abandon()
-  statistics?.debt.replan({ preserveDelay: true })
+  recordScheduleJump('extendedBreak')
   if (microbreakWins) {
     increaseDanger(1)
     microbreakWins = breakComplete(false, microbreakWins)
@@ -1546,8 +1574,8 @@ function skipToExtendedBreak (delay) {
 
 function resetBreaks () {
   closeBreakNotice()
+  statistics?.resetDebt()
   statistics?.abandon()
-  statistics?.debt.replan({ preserveDelay: true })
   if (microbreakWins) {
     microbreakWins = breakComplete(false, microbreakWins)
   }
@@ -1994,7 +2022,7 @@ ipcMain.on('save-setting', function (event, key, value) {
 
   if (['breakDuration', 'extendedBreakDuration', 'break', 'extendedBreak', 'extendedBreakInterval', 'microbreakInterval', 'breakInterval'].includes(key)) {
     statistics?.advance()
-    statistics?.debt.replan({ preserveDelay: true })
+    statistics?.debt.replan()
   }
   if (key === 'manualBreakStart') {
     if (typeof value !== 'boolean') return

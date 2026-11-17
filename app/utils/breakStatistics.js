@@ -1,4 +1,4 @@
-import BreakDebt from './breakDebt.js'
+import DebtSession from './debtSession.js'
 import { dateKey } from './localDate.js'
 
 const fields = ['breakMs', 'breaks', 'withoutDelay', 'workMs', 'stretchTotalMs', 'stretchCount']
@@ -13,11 +13,13 @@ const cleanPeriod = period => ({
 export { dateKey }
 
 export default class BreakStatistics {
-  constructor ({ data = {}, now = Date.now, onChange = () => {}, debtRate = () => 0 } = {}) {
+  constructor ({ data = {}, now = Date.now, onChange = () => {}, debtRate = () => 0, debtSettings = () => ({}) } = {}) {
     this.now = now
     this.onChange = onChange
     this.debtRate = debtRate
-    this.debt = new BreakDebt(data.debt)
+    this.debtSettings = debtSettings
+    this.session = DebtSession.restore(data.debt)
+    this.debt = this.session.debt
     this.data = { version: 2, days: {} }
     for (const [key, period] of Object.entries(data.days ?? {})) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(key)) this.data.days[key] = cleanPeriod(period)
@@ -72,14 +74,7 @@ export default class BreakStatistics {
       ? this.episode?.waiting ? 'waiting' : 'work'
       : kind === 'paused' ? kind : kind === 'mini' && !this.idleQualified ? 'mini' : 'rest'
     const rate = this.debtRate()
-    let cursor = from
-    while (cursor < at) {
-      const midnight = new Date(cursor)
-      midnight.setHours(24, 0, 0, 0)
-      const end = Math.min(at, midnight.getTime())
-      this.debt.record(debtKind, cursor, end, rate)
-      cursor = end
-    }
+    if (debtKind === 'work') this.session.recordWork(at - from, rate, at)
     if (kind !== 'paused') this.span(kind, from, at)
     if (this.mode === 'break' && this.episode) this.episode.timerMs += at - from
     if (kind === 'work') {
@@ -93,6 +88,7 @@ export default class BreakStatistics {
 
   offer ({ type, baseDuration }) {
     this.advance()
+    if (type !== 'mini') this.session.returned()
     if (this.episode?.type !== type) {
       this.episode = { type, baseDuration, postpones: 0, hasStarted: false, timerMs: 0 }
     }
@@ -104,6 +100,7 @@ export default class BreakStatistics {
     this.advance()
     const episode = this.episode
     if (!episode) return false
+    if (episode.type !== 'mini') this.session.postpone()
     episode.waiting = false
     episode.postpones++
     const normal = episode.postpones === 1
@@ -134,10 +131,16 @@ export default class BreakStatistics {
     this.workSpans = []
   }
 
-  finish (completed) {
+  finish (completed, { idle = false, skipped = false } = {}) {
     this.advance()
     const episode = this.episode
     if (!episode) return
+    if (idle && episode.type !== 'mini') {
+      this.debt.pay(episode.debtPayment || 0, Math.max(0, episode.timerMs - episode.baseDuration))
+    }
+    if (!idle && !skipped && episode.type !== 'mini') {
+      this.session.complete(episode.type, episode.debtPayment || 0, Math.max(0, episode.timerMs - episode.baseDuration))
+    }
     this.add('breaks', 1)
     if (completed && episode.hasStarted) {
       if (episode.postpones <= 1) this.add('withoutDelay', 1)
@@ -149,10 +152,33 @@ export default class BreakStatistics {
     this.onChange()
   }
 
-  // Skipping adds no penalty; elapsed rest remains credited.
   skip () {
     this.advance()
-    this.finish(false)
+    const episode = this.episode
+    if (episode && episode.type !== 'mini') this.skipLarger(episode.type, episode.baseDuration, episode.timerMs, episode.debtPayment || 0)
+    this.finish(false, { skipped: true })
+  }
+
+  skipLarger (type, duration, elapsed = 0, assigned = 0) {
+    const config = this.debtSettings()
+    const interval = type === 'extended' ? config.cycleInterval : config.longInterval
+    this.session.skip(type, interval, duration, Math.min(duration, elapsed), assigned, Math.max(0, elapsed - duration))
+    this.onChange()
+  }
+
+  resetDebt () {
+    this.advance()
+    const episode = this.episode
+    const baseRest = episode && episode.type !== 'mini' ? Math.min(episode.baseDuration, episode.timerMs) : 0
+    if (episode && episode.type !== 'mini') this.debt.pay(episode.debtPayment || 0, Math.max(0, episode.timerMs - episode.baseDuration))
+    this.session.reset(this.debtRate(), baseRest)
+    this.onChange()
+  }
+
+  idleRecovery (type, elapsed, duration, assigned, fulfilled) {
+    const config = this.debtSettings()
+    this.session.idle(type, elapsed, duration, assigned, config.longDuration, config.extendedDuration, config.cycleInterval, fulfilled)
+    this.onChange()
   }
 
   abandon () {
@@ -162,6 +188,7 @@ export default class BreakStatistics {
 
   cancel () {
     this.advance()
+    this.session.returned()
     this.episode = null
     this.breakType = null
     if (this.mode !== 'paused') this.mode = this.idleQualified ? 'idle' : 'work'
@@ -170,6 +197,7 @@ export default class BreakStatistics {
 
   pause () {
     this.advance()
+    this.session.returned()
     this.mode = 'paused'
     this.episode = null
     this.suspendedMode = null
@@ -198,7 +226,7 @@ export default class BreakStatistics {
     if (this.mode === 'paused') return
     if (idleMs >= threshold && !this.idleQualified) {
       const idleStart = Math.max(this.startedAt, at - idleMs)
-      this.debt.recognizeIdle(idleStart, at)
+      this.session.correctIdle(idleStart, at)
       for (const span of this.workSpans) {
         const from = Math.max(span.from, idleStart)
         if (from < span.to) {
@@ -238,12 +266,12 @@ export default class BreakStatistics {
     }
     const episode = this.episode
     const kind = episode ? `${episode.type === 'mini' ? 'Mini' : episode.type === 'extended' ? 'Extended' : 'Long'} break` : ''
-    return { current: { kind, postpones: episode?.postpones ?? 0, debtTotal: Math.max(0, this.debt.balance, this.debt.postponement?.earned ?? 0), debtPayment: episode?.debtPayment ?? 0 }, today, week }
+    return { current: { kind, postpones: episode?.postpones ?? 0, debtTotal: this.debt.amount, debtPayment: episode?.debtPayment ?? 0 }, today, week }
   }
 
   serialize () {
     this.advance()
     this.prune()
-    return JSON.stringify({ ...this.data, debt: this.debt.serialize() })
+    return JSON.stringify({ ...this.data, debt: this.session.serialize() })
   }
 }

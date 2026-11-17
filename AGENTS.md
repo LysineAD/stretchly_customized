@@ -27,3 +27,12 @@ than opening a low-quality Issue or PR.
 
 For technical stack and code style, see
 [.github/copilot-instructions.md](.github/copilot-instructions.md).
+
+## Customized app delivery
+
+For requested application changes, validate, commit and push the source, then
+publish the Windows build to `D:\Projects\Stretchly_Customized`, replacing the
+old application files while preserving the user's profile and settings. Follow
+[UPDATING.md](UPDATING.md) for the build, copy and verification steps. Use quick,
+isolated application tests; act on any test window immediately and close it as
+soon as the check finishes.

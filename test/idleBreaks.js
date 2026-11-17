@@ -61,6 +61,40 @@ describe('AFK recovery for scheduled breaks', () => {
     vi.advanceTimersByTime(4000)
   }
 
+  it('closes a running Long break when idle fulfills its base before return', () => {
+    values.breakDuration = 4 * minute
+    const close = vi.fn()
+    planner.on('closeForIdle', close)
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 10 * minute))
+    planner.nextBreak()
+    vi.advanceTimersByTime(41 * minute)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(4 * minute + 4000)
+    expect(close).toHaveBeenCalledWith(expect.objectContaining({ completed: true }))
+    expect(close).toHaveBeenCalledOnce()
+    comeBack()
+    expect(close).toHaveBeenCalledOnce()
+    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true }))
+  })
+
+  it('resets the interval after short idle during an Extended break without fulfilling it', () => {
+    values.breakDuration = 4 * minute
+    values.extendedBreak = true
+    values.extendedBreakDuration = 12 * minute
+    values.extendedBreakInterval = 1
+    const close = vi.fn()
+    planner.on('closeForIdle', close)
+    planner.on('startExtendedBreak', () => planner.emit('extendedBreakStarted', false, 12 * minute))
+    planner.nextBreak()
+    vi.advanceTimersByTime(41 * minute)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(4 * minute)
+    comeBack()
+    expect(close).toHaveBeenCalledWith({ completed: false })
+    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: false, reset: false }))
+    expect(planner.timeToNextBreak).toBe(40 * minute)
+  })
+
   it('uses the saved durations for AFK qualification', () => {
     expect(planner.naturalBreaksManager.thresholds).toEqual({ short: 180000, long: 900000 })
     values.breakDuration = 240000

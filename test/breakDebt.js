@@ -1,78 +1,102 @@
 import { describe, it, expect } from 'vitest'
-import BreakDebt, { breakDebtRate } from '../app/utils/breakDebt.js'
+import { breakDebtRate } from '../app/utils/breakDebt.js'
 import BreakStatistics from '../app/utils/breakStatistics.js'
 
 const minute = 60000
-const at = new Date(2026, 10, 13, 9).getTime()
-const rate = 1 / 6
-const upcoming = [4, 4, 12].map((duration, i) => ({ after: i * 40 * minute, duration: duration * minute }))
+const config = { longInterval: 40 * minute, cycleInterval: 120 * minute, longDuration: 4 * minute, extendedDuration: 12 * minute }
+const values = { break: true, extendedBreak: true, extendedBreakInterval: 3, microbreakInterval: 20 * minute, breakInterval: 1, breakDuration: 4 * minute, extendedBreakDuration: 12 * minute }
+const rate = breakDebtRate({ get: key => values[key] })
+const durations = [4, 4, 12].map(value => value * minute)
 
-describe('schedule-aligned break debt', () => {
-  it('derives the target rate from the configured schedule', () => {
-    const values = { break: true, extendedBreak: true, extendedBreakInterval: 3, microbreakInterval: 20 * minute, breakInterval: 1, breakDuration: 4 * minute, extendedBreakDuration: 12 * minute }
-    expect(breakDebtRate({ get: k => values[k] })).toBeCloseTo(rate)
+function fixture (data = {}) {
+  let now = new Date(2026, 10, 13, 9).getTime()
+  const stats = new BreakStatistics({ data, now: () => now, debtRate: () => rate, debtSettings: () => config })
+  return { stats, advance: ms => { now += ms } }
+}
+
+describe('break debt integration', () => {
+  it('derives the average rate from configured values', () => {
+    expect(rate).toBeCloseTo(1 / 6)
+    expect(breakDebtRate({ get: key => ({ ...values, breakDuration: 3 * minute, extendedBreakDuration: 6 * minute })[key] })).toBeCloseTo(1 / 10)
   })
-  it('allocates a forecast in a 1:1:3 ratio', () => {
-    const debt = new BreakDebt({ modelVersion: 3, balance: 15 * minute })
-    debt.forecast(rate, upcoming)
-    expect(debt.plan[1]).toBeCloseTo(debt.plan[0])
-    expect(debt.plan[2]).toBeCloseTo(3 * debt.plan[0])
-  })
-  it('limits each addition to six minutes while preserving the balance', () => {
-    const debt = new BreakDebt({ modelVersion: 3, balance: 120 * minute })
-    expect(debt.forecast(rate, upcoming)).toBe(6 * minute)
-    debt.record('rest', at, at + 10 * minute, rate)
-    debt.resolve(6 * minute)
-    expect(debt.balance).toBe(110 * minute)
-    expect(new BreakDebt(debt.serialize()).balance).toBe(110 * minute)
-  })
-  it('carries surplus as well as debt over midnight and restart', () => {
-    const debt = new BreakDebt({ modelVersion: 3, balance: -10 * minute })
-    debt.record('work', at, at + minute, rate)
-    debt.record('work', at + 86400000, at + 86400000 + minute, rate)
-    expect(new BreakDebt(debt.serialize()).balance).toBeCloseTo((-10 + 2 * rate) * minute)
-  })
-  it('starts legacy model balances fresh', () => {
-    expect(new BreakDebt({ balance: 500000, postponement: { earned: 900000 } }).balance).toBe(0)
-  })
-  it('does not create a postponement penalty', () => {
-    const debt = new BreakDebt({ modelVersion: 3, balance: 5 * minute })
-    debt.postpone(at)
-    expect(debt.balance).toBe(5 * minute)
-    debt.record('work', at, at + 6 * minute, rate)
-    expect(debt.balance).toBe(6 * minute)
-  })
-  it('recalculates proportional shares after repeated postponements', () => {
-    const debt = new BreakDebt({ modelVersion: 3, balance: 15 * minute })
-    for (let i = 0; i < 3; i++) {
-      debt.postpone(at + i * 2 * minute)
-      debt.record('work', at + i * 2 * minute, at + (i + 1) * 2 * minute, rate)
-      debt.forecast(rate, upcoming)
-      expect(debt.plan[1]).toBeCloseTo(debt.plan[0])
-      expect(debt.plan[2]).toBeCloseTo(3 * debt.plan[0])
+
+  it('charges three postponements and pays only the assigned share', () => {
+    const { stats, advance } = fixture()
+    advance(40 * minute)
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    for (const delay of [2, 4, 6]) {
+      stats.postpone()
+      advance(delay * minute)
+      stats.advance()
+      stats.offer({ type: 'long', baseDuration: 4 * minute })
     }
-  })
-  it('credits actual partial rest even if a break is skipped', () => {
-    let now = at
-    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
-    stats.debt.balance = 10 * minute
-    stats.offer({ type: 'long', baseDuration: 4 * minute })
-    stats.start('long', 4 * minute)
-    now += 2 * minute
-    stats.skip()
-    expect(stats.debt.balance).toBe(8 * minute)
-  })
-  it('credits idle once when idle overlaps a timed break', () => {
-    let now = at
-    const stats = new BreakStatistics({ now: () => now, debtRate: () => rate })
-    now += 40 * minute
-    stats.offer({ type: 'long', baseDuration: 4 * minute })
-    stats.start('long', 4 * minute)
-    now += 2 * minute
-    stats.observeIdle(3 * minute, 3 * minute)
-    now += minute
+    expect(stats.debt.amount).toBeCloseTo(2 * minute)
+    const shares = stats.debt.shares(durations)
+    expect(shares).toEqual([24, 24, 72].map(value => value * 1000))
+    stats.episode.debtPayment = shares[0]
+    stats.start('long', 4 * minute + shares[0])
+    advance(4 * minute + shares[0])
     stats.finish(true)
-    expect(stats.debt.work).toBe(39 * minute)
-    expect(stats.debt.balance).toBeCloseTo((39 * rate - 4) * minute)
+    expect(stats.debt.amount).toBeCloseTo(96 * 1000)
+    expect(stats.debt.shares([4, 12, 4].map(value => value * minute))).toEqual([24, 72, 0].map(value => value * 1000))
+  })
+
+  it('charges a reset since the most recently completed larger break', () => {
+    const { stats, advance } = fixture()
+    advance(10 * minute)
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    stats.start('long', 4 * minute)
+    advance(4 * minute)
+    stats.finish(true)
+    advance(10 * minute)
+    stats.resetDebt()
+    expect(stats.debt.amount).toBeCloseTo(10 * minute / 6)
+  })
+
+  it('removes misclassified idle from postponed work without removing earlier debt', () => {
+    const { stats, advance } = fixture({ debt: { modelVersion: 3, balance: minute } })
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    stats.postpone()
+    advance(4 * minute)
+    stats.observeIdle(4 * minute, 4 * minute)
+    expect(stats.debt.amount).toBeCloseTo(minute)
+  })
+
+  it('credits idle only to the immediate share and retains the earned Extended portion', () => {
+    const { stats, advance } = fixture({ debt: { modelVersion: 3, balance: 5 * minute } })
+    advance(35 * minute)
+    stats.advance()
+    const assigned = stats.debt.shares(durations)[0]
+    advance(5 * minute)
+    stats.observeIdle(5 * minute, 4 * minute)
+    stats.idleRecovery('long', 5 * minute, 4 * minute, assigned, false)
+    expect(stats.debt.amount).toBeCloseTo(7.5 * minute)
+  })
+
+  it('leaves earlier debt intact when an Extended-length idle resets a session', () => {
+    const { stats, advance } = fixture({ debt: { modelVersion: 3, balance: 5 * minute } })
+    advance(30 * minute)
+    stats.advance()
+    const assigned = stats.debt.shares([12, 4, 4].map(value => value * minute))[0]
+    advance(14 * minute)
+    stats.observeIdle(14 * minute, 4 * minute)
+    stats.idleRecovery('extended', 14 * minute, 12 * minute, assigned, true)
+    stats.session.finishIdleSession()
+    expect(stats.debt.amount).toBe(3 * minute)
+  })
+
+  it('counts timed extra rest before an idle-fulfilled break closes without paying it twice', () => {
+    const { stats, advance } = fixture({ debt: { modelVersion: 3, balance: 5 * minute } })
+    advance(40 * minute)
+    stats.offer({ type: 'long', baseDuration: 4 * minute })
+    const assigned = stats.debt.shares(durations)[0]
+    stats.episode.debtPayment = assigned
+    stats.start('long', 5 * minute)
+    advance(5 * minute)
+    stats.finish(true, { idle: true })
+    expect(stats.debt.amount).toBe(4 * minute)
+    const remaining = stats.debt.shares(durations)[0]
+    stats.idleRecovery('long', 6 * minute, 4 * minute, remaining, true)
+    expect(stats.debt.amount).toBe(8 * minute)
   })
 })

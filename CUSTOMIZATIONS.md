@@ -30,7 +30,7 @@ Updated: 2026-11-15. This file records the active feature contract for future ed
 | Notifications | Long and Extended show a small centered notice for three seconds, one minute before the scheduled break, when enabled. Mini keeps its existing notification. |
 | Idle controls | The configured break durations determine the idle thresholds. Early idle restarts the current interval, and qualifying idle near a scheduled break fulfills it. An absence that starts during a running Long/Extended break and lasts at least as long as that break fulfills it even if the break ends while away. Extended-length idle starts a fresh reminder session. The next full interval starts at the moment of return. A counter reset while the session is reported locked keeps the absence open; an unlocked reset cannot reliably be distinguished from a return. |
 | Statistics | Only Break time, Without delay %, Average stretch and Computer use are displayed, with Today and 7-day avg/day columns. Time totals are divided by seven; rates and stretch averages use their underlying seven-day samples. A small +N badge beside Postpone counts each press. Zero/one Postpone is normal; more, Skip or an early ending lower the one percentage. No lifetime, longest-stretch, type breakdown, current-work headline or planned-interval display. Only seven dates persist, in both main and backup files. See [STATISTICS.md](STATISTICS.md). |
-| Break debt | The schedule-derived rate tracks actual work and larger-break or qualifying idle rest, including partial breaks. Debt and surplus carry across days. Forecast shortage is distributed proportionally over the next three larger breaks, with at most six minutes added to any one break; unpaid balance remains for later breaks. Previous-model debt is reset on first load, while daily statistics are preserved. See [STATISTICS.md](STATISTICS.md). |
+| Break debt | Postponements, skips and resets add earned debt based on configured durations and intervals. Debt is allocated to three larger breaks, with a six-minute cap per break. Only actual assigned extra rest pays it; qualifying idle can pay only the immediate share. See [STATISTICS.md](STATISTICS.md). |
 | Other upstream options | Manual finish, clock, health mode, images, audio, idle/DND handling and advanced preferences are retained. These are upstream features; Extended adapts the relevant options to its third break type. |
 | Branding/delivery | Windows executable/product name is Stretchly Customized. Builds are delivered locally; generated binaries, profiles and check artifacts are excluded from Git. |
 
@@ -38,16 +38,16 @@ One Postpone remains normal; the badge still shows +1. A second press shows +2 a
 
 ## Purpose and boundaries for future changes
 
-- The goal is a sustainable long-run average of larger-break rest per active-work minute, not an exact daily quota. Debt and surplus carry across days; natural variation is acceptable, but persistent shortfall or excessive catch-up is not.
-- Skip, Postpone, Reset and early Finish do not add a penalty. Actual partial larger-break rest counts; qualifying idle counts once, including overlap with a timer. Mini breaks are shown in statistics but are not larger-break debt payments.
-- The shortage forecast uses the next three scheduled larger breaks and their durations as weights. A 4/4/12 sequence has 1:1:3 forecast shares. Each addition is capped at six minutes; any balance beyond the cap stays for later forecasts. Shares are recalculated as the schedule changes, not locked to a specific three-break batch.
-- The model carries signed balance, work and forecast state locally. Loading legacy debt without model version 3 resets the old debt state; seven-day statistics are retained. The break window itself is not restored after restart.
-- Do not replace the working model merely to satisfy an exact two-hour or daily quota. A proposed replacement must compare actual rest, surplus, carried debt and individual break lengths over multiple days, including skips, postpones, partial breaks, idle and recovery. The 42-day simulation is evidence for a candidate under its assumptions, not a guarantee for every behavior.
+- Derive the debt rate, idle thresholds and repayment weights from current schedule settings. Extra rest is not saved as a credit against future debt.
+- Postpone charges active delay; Skip charges the earned part of the skipped break; Reset charges active work since the last completed larger break at the combined rate. Do not charge the same work twice.
+- Allocate debt to the next three larger breaks, including a returning postponed break, in proportion to their base durations. Each added duration is capped at six minutes; unpaid shares and unallocated debt remain owed.
+- Actual extra break time pays its assigned share. Idle must first meet the immediate break's base duration and can pay only that break's share. Interval and session resets never erase unpaid debt.
+- Version 4 stores positive debt and assigned shares; existing positive version 3 debt and daily statistics migrate. The break window itself is not restored after restart.
 - Preserve upstream behavior and existing settings when modifying custom features. Windows is the delivery target; other platforms and native multiple-monitor behavior need their own verification.
 
 ## History
 
-The current balance model and the preceding idle, skip and cadence fixes are in `9f4d8e5`. This model supersedes the fixed-block and separate postponement-debt rules recorded in older audit and changelog entries. Earlier feature iterations remain in Git history and [CUSTOM_CODE_AUDIT.md](CUSTOM_CODE_AUDIT.md); treat those records as historical, not as the current contract.
+The event-based debt model replaces the signed-balance model introduced in `9f4d8e5` and the earlier postponement-debt iterations. Earlier feature iterations remain in Git history and [CUSTOM_CODE_AUDIT.md](CUSTOM_CODE_AUDIT.md); treat those records as historical, not as the current contract.
 
 ## Iterations and obsolete behavior
 
@@ -83,7 +83,7 @@ Old `startBreakShortcut` settings are ignored; no separate Start shortcut is reg
 | Waiting / auto-start / shared key | `app/utils/breakStartController.js`, `breakStartControl.js`, `breakActionShortcut.js`, both break renderers, `app/main.js` |
 | Preferences / defaults / labels | `app/preferences.html`, `preferences-renderer.js`, `css/preferences.css`, `utils/defaultSettings.js`, `locales/en.json` |
 | Statistics | `app/utils/breakStatistics.js`, `breakStatisticsView.js`, `statisticsFile.js`, [definitions](STATISTICS.md) |
-| Break debt / average rest | `app/utils/breakDebt.js` (rate, forecast, resolve), `app/main.js` (`updateBreakDebtForecast`), `app/utils/breakStatistics.js`, `scripts/check-break-average.mjs`, `test/breakDebt.js`, [definitions](STATISTICS.md) |
+| Break debt / average rest | `app/utils/breakDebt.js` (rate), `app/utils/debtSession.js`, `app/utils/debtAllocation.js`, `app/main.js` (`updateBreakDebtForecast`), `app/utils/breakStatistics.js`, `scripts/check-break-average.mjs`, `test/breakDebt.js`, [definitions](STATISTICS.md) |
 | Evidence / rebuilding | Regression tests under `test/`; Windows check scripts under `scripts/`; [update guide](UPDATING.md) |
 
 Keep this inventory concise and update it whenever a customization changes. Exact build/test reports stay in the checkout's ignored `.scratch/` folder.

@@ -51,7 +51,14 @@ class BreaksPlanner extends EventEmitter {
     })
 
     this.naturalBreaksManager.on('idleTimeObserved', idleTime => {
-      if (idleTime >= this.naturalBreaksManager.minimumIdle) this.captureIdle(idleTime)
+      if (idleTime < this.naturalBreaksManager.minimumIdle) return
+      const period = this.captureIdle(idleTime)
+      if (period?.duringBreak && !period.fulfilledWhileIdle && larger(period.type) &&
+        idleTime >= this.settings.get(period.type + 'Duration')) {
+        period.fulfilledWhileIdle = true
+        this.scheduler.suspend()
+        this.emit('closeForIdle', { completed: true, idleTime })
+      }
     })
     this.naturalBreaksManager.on('idleShortThresholdReached', idleTime => {
       const period = this.captureIdle(idleTime)
@@ -147,6 +154,7 @@ class BreaksPlanner extends EventEmitter {
         pausedScheduler: null,
         held: false
       }
+      this.emit('idleCaptured', this.idlePeriod)
     }
     return this.idlePeriod
   }
@@ -195,7 +203,7 @@ class BreaksPlanner extends EventEmitter {
     const absence = Math.max(idleTime, returnedAt - period.from)
     const coversBreak = Boolean(period.duringBreak && larger(period.type) && period.breakEndsAt !== null &&
       returnedAt >= period.breakEndsAt && absence >= this.settings.get(period.type + 'Duration'))
-    const fulfilled = fulfills || coversBreak
+    const fulfilled = period.fulfilledWhileIdle || fulfills || coversBreak
     if (!qualifies && !fulfilled) {
       if (period.held) this.resumeAfterIdle(period, idleTime)
       return
@@ -203,17 +211,14 @@ class BreaksPlanner extends EventEmitter {
     if (coversBreak) period.completed = false
 
     const running = this._isFinishingBreak
-    if (running && !this.scheduler.waitingForStart && !fulfilled && !full) {
-      this.emit('idleRecoveryFinished', { idleTime })
-      return
-    }
-    if (running) this.emit('closeForIdle', { completed: fulfilled })
+    if (running && !period.fulfilledWhileIdle) this.emit('closeForIdle', { completed: fulfilled })
     const next = this.largerBreaks(1)[0]
     const ordinal = next?.ordinal ?? this.longBreakNumber + 1
     const postpones = this.postponesNumber
     this.scheduler?.cancel()
     this.breakNumber = 0
     this.longBreakNumber = full ? 0 : fulfilled ? period.ordinal : Math.max(0, ordinal - 1)
+    this.emit('idleDebtRecovery', { period, idleTime, fulfilled, reset: full })
     this.emit('idleRecoveryFinished', { idleTime, fulfilled, reset: full })
     this.nextBreak()
     if (!full && !fulfilled && !period.completed) this.postponesNumber = postpones

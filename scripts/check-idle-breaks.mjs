@@ -66,7 +66,8 @@ try {
       const { default: BreaksPlanner } = require(join(app.getAppPath(), 'app/breaksPlanner.js'))
       const { default: defaults } = require(join(app.getAppPath(), 'app/utils/defaultSettings.js'))
       const { default: BreakStatistics } = require(join(app.getAppPath(), 'app/utils/breakStatistics.js'))
-      const { default: BreakDebt, breakDebtRate } = require(join(app.getAppPath(), 'app/utils/breakDebt.js'))
+      const { breakDebtRate } = require(join(app.getAppPath(), 'app/utils/breakDebt.js'))
+      const { default: DebtSession } = require(join(app.getAppPath(), 'app/utils/debtSession.js'))
       const minute = 60000
       const values = {
         ...defaults, naturalBreaks: false, monitorDnd: false,
@@ -112,28 +113,40 @@ try {
         planner.appExclusionsManager.stop()
       }
       let clock = Date.now()
-      const stats = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings) })
-      stats.debt.balance = 20 * minute
-      stats.debt.work = 100 * minute
+      const debtSettings = () => ({ longInterval: 40 * minute, cycleInterval: 80 * minute, longDuration: 4 * minute, extendedDuration: 12 * minute })
+      const stats = new BreakStatistics({ data: { debt: { modelVersion: 3, balance: 5 * minute } }, now: () => clock, debtRate: () => breakDebtRate(settings), debtSettings })
+      clock += 40 * minute
       stats.offer({ type: 'long', baseDuration: 4 * minute })
-      clock += 10000
-      stats.start('long', 4 * minute)
-      clock += 3 * minute
-      const before = stats.debt.balance
+      stats.episode.debtPayment = stats.debt.shares([4, 4, 12].map(value => value * minute))[0]
+      stats.start('long', 5 * minute)
+      clock += 4.5 * minute
+      const before = stats.debt.amount
       stats.skip()
-      reports.skip = { before, after: stats.debt.balance }
-      if (stats.debt.balance !== before - 3 * minute) throw Error('Partial rest was not credited')
+      reports.skip = { before, after: stats.debt.amount }
+      if (stats.debt.amount !== before - 0.5 * minute) throw Error('Partial debt payment was not retained')
 
-      const ledger = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings) })
-      ledger.debt.balance = 30 * minute
-      const upcoming = [0, 40, 80].map((after, i) => ({ after: after * minute, duration: [4, 4, 12][i] * minute }))
-      const payment = ledger.debt.forecast(breakDebtRate(settings), upcoming)
+      const ledger = new BreakStatistics({ data: { debt: { modelVersion: 3, balance: 5 * minute } }, now: () => clock, debtRate: () => breakDebtRate(settings), debtSettings })
+      const plan = ledger.debt.shares([4, 4, 12].map(value => value * minute))
+      const payment = plan[0]
       const saved = JSON.parse(ledger.serialize())
-      const restored = new BreakDebt(saved.debt)
-      reports.debt = { payment, plan: ledger.debt.plan, before: ledger.debt.balance, after: restored.balance }
+      const restored = DebtSession.restore(saved.debt)
+      reports.debt = { payment, plan, before: ledger.debt.amount, after: restored.debt.amount }
       if (payment > 6 * minute) throw Error('Repayment exceeds six minutes')
-      if (Math.abs(ledger.debt.plan[2] - 3 * ledger.debt.plan[0]) > 1) throw Error('Forecast is not proportional')
-      if (restored.balance !== ledger.debt.balance) throw Error('Debt changed on restart')
+      if (Math.abs(plan[2] - 3 * plan[0]) > 1) throw Error('Allocation is not proportional')
+      if (restored.debt.amount !== ledger.debt.amount) throw Error('Debt changed on restart')
+      values.extendedBreakInterval = 3
+      const postponed = new BreakStatistics({ now: () => clock, debtRate: () => breakDebtRate(settings), debtSettings })
+      clock += 40 * minute
+      postponed.offer({ type: 'long', baseDuration: 4 * minute })
+      for (const delay of [2, 4, 6]) {
+        postponed.postpone()
+        clock += delay * minute
+        postponed.advance()
+        postponed.offer({ type: 'long', baseDuration: 4 * minute })
+      }
+      const shares = postponed.debt.shares([4, 4, 12].map(value => value * minute))
+      if (Math.abs(postponed.debt.amount - 2 * minute) > 1 || Math.abs(shares[0] - 24000) > 1) throw Error('Repeated postponement debt or allocation is incorrect')
+      reports.postponed = { debt: postponed.debt.amount, shares }
       return reports
     })()`
   })
@@ -141,7 +154,7 @@ try {
   assert.equal(result.result.value.thresholds.short, 240000)
   assert.ok(Math.abs(result.result.value.rate - 0.2) < 1e-9)
   assert.equal(result.result.value.afk.fulfilled, true)
-  assert.equal(result.result.value.skip.after, result.result.value.skip.before - 180000)
+  assert.equal(result.result.value.skip.after, result.result.value.skip.before - 30000)
   assert.equal(result.result.value.debt.before, result.result.value.debt.after)
   assert.ok(result.result.value.debt.payment <= 360000)
   writeFileSync(join(profile, 'results.json'), JSON.stringify({ app: folder, reports: result.result.value }, null, 2))
