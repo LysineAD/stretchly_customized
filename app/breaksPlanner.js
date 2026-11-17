@@ -24,11 +24,18 @@ class BreaksPlanner extends EventEmitter {
     this.isPaused = false
     this.pollersSuspended = false
     this.idlePeriod = null
+    this.breakWindowOpenedAt = null
+    this.waitingForActivity = false
+    this.fullIdleResetPending = false
+    this.fullIdleResetDone = false
+    this.activityTimer = null
+    this.lastObservedIdle = 0
     this.naturalBreaksManager = new NaturalBreaksManager(settings)
     this.dndManager = new DndManager(settings)
     this.appExclusionsManager = new AppExclusionsManager(settings)
 
     this.on('microbreakStarted', (shouldPlaySound) => {
+      this.breakWindowOpenedAt ??= Date.now()
       this.notificationScheduler?.cancel()
       this.notificationScheduler = null
       const interval = this.settings.get('microbreakDuration')
@@ -37,6 +44,7 @@ class BreaksPlanner extends EventEmitter {
     })
 
     this.on('breakStarted', (shouldPlaySound, duration = this.settings.get('breakDuration')) => {
+      this.breakWindowOpenedAt ??= Date.now()
       this.notificationScheduler?.cancel()
       this.notificationScheduler = null
       this.scheduler = new Scheduler(() => this.emit('finishBreak', shouldPlaySound, true), duration, 'finishBreak')
@@ -44,6 +52,7 @@ class BreaksPlanner extends EventEmitter {
     })
 
     this.on('extendedBreakStarted', (shouldPlaySound, duration = this.settings.get('extendedBreakDuration')) => {
+      this.breakWindowOpenedAt ??= Date.now()
       this.notificationScheduler?.cancel()
       this.notificationScheduler = null
       this.scheduler = new Scheduler(() => this.emit('finishExtendedBreak', shouldPlaySound, true), duration, 'finishExtendedBreak')
@@ -51,8 +60,23 @@ class BreaksPlanner extends EventEmitter {
     })
 
     this.naturalBreaksManager.on('idleTimeObserved', idleTime => {
+      const previousIdle = this.lastObservedIdle
+      this.lastObservedIdle = idleTime
+      if (this.waitingForActivity) {
+        const absenceStart = this.naturalBreaksManager.absenceStart
+        const elapsed = idleTime < previousIdle && absenceStart !== null
+          ? Math.max(previousIdle, Date.now() - idleTime - absenceStart)
+          : idleTime
+        if (this.isFullIdle(elapsed) && !this.fullIdleResetDone) this.resetIdleScheduleWhileWaiting()
+        if (idleTime < previousIdle && !this.naturalBreaksManager.isLocked) this.resumeOnActivity()
+        return
+      }
       if (idleTime < this.naturalBreaksManager.minimumIdle) return
       const period = this.captureIdle(idleTime)
+      if (period?.startedDuringBreak) {
+        if (this.isFullIdle(idleTime)) this.fullIdleResetPending = true
+        return
+      }
       if (period?.duringBreak && !period.fulfilledWhileIdle && larger(period.type) &&
         idleTime >= this.settings.get(period.type + 'Duration')) {
         period.fulfilledWhileIdle = true
@@ -61,8 +85,9 @@ class BreaksPlanner extends EventEmitter {
       }
     })
     this.naturalBreaksManager.on('idleShortThresholdReached', idleTime => {
+      if (this.waitingForActivity) return
       const period = this.captureIdle(idleTime)
-      if (period) this.holdForIdle(period)
+      if (period && !period.startedDuringBreak) this.holdForIdle(period)
     })
     this.naturalBreaksManager.on('idlePeriodFinished', (idleTime, returnedAt) => {
       this.finishIdleRecovery(idleTime, returnedAt)
@@ -149,12 +174,13 @@ class BreaksPlanner extends EventEmitter {
         ordinal: next?.ordinal,
         type: next?.type,
         duringBreak,
+        startedDuringBreak: this.breakWindowOpenedAt !== null && Date.now() - idleTime >= this.breakWindowOpenedAt - 1000,
         breakEndsAt: duringBreak ? Date.now() + Math.max(0, this.scheduler.timeLeft || 0) : null,
         completed: false,
         pausedScheduler: null,
         held: false
       }
-      this.emit('idleCaptured', this.idlePeriod)
+      if (!this.idlePeriod.startedDuringBreak) this.emit('idleCaptured', this.idlePeriod)
     }
     return this.idlePeriod
   }
@@ -189,6 +215,7 @@ class BreaksPlanner extends EventEmitter {
     const period = this.idlePeriod
     this.idlePeriod = null
     if (!period || this.isPaused || !this.scheduler?.reference) return
+    if (period.startedDuringBreak) return
     const { short, long } = this.naturalBreaksManager.thresholds
     const full = this.settings.get('break') && this.settings.get('extendedBreak') && idleTime >= long
     const qualifies = idleTime >= short || full
@@ -272,6 +299,8 @@ class BreaksPlanner extends EventEmitter {
   }
 
   waitForBreakStart (type) {
+    this.breakWindowOpenedAt = Date.now()
+    if (this.idlePeriod && !this.idlePeriod.startedDuringBreak) this.idlePeriod.duringBreak = true
     this.scheduler.cancel()
     const prefix = type === 'mini' ? 'microbreak' : type === 'extended' ? 'extendedBreak' : 'break'
     const reference = type === 'mini' ? 'finishMicrobreak' : type === 'extended' ? 'finishExtendedBreak' : 'finishBreak'
@@ -279,10 +308,69 @@ class BreaksPlanner extends EventEmitter {
     this.scheduler.waitingForStart = true
   }
 
+  markBreakWindowOpened () {
+    this.breakWindowOpenedAt = Date.now()
+  }
+
+  isFullIdle (idleTime) {
+    return this.naturalBreaksManager.usingNaturalBreaks && this.settings.get('break') &&
+      this.settings.get('extendedBreak') && idleTime >= this.naturalBreaksManager.thresholds.long
+  }
+
+  resetIdleScheduleWhileWaiting () {
+    this.scheduler?.cancel()
+    this.notificationScheduler?.cancel()
+    this.notificationScheduler = null
+    this.idlePeriod = null
+    this.breakNumber = 0
+    this.longBreakNumber = 0
+    this.fullIdleResetPending = false
+    this.fullIdleResetDone = true
+    this.waitingForActivity = false
+    this.emit('idleSessionReset')
+    this.nextBreak()
+    this.waitingForActivity = true
+    this.scheduler?.suspend()
+    this.notificationScheduler?.suspend()
+  }
+
+  resumeOnActivity () {
+    if (!this.waitingForActivity) return
+    this.waitingForActivity = false
+    this.fullIdleResetDone = false
+    clearInterval(this.activityTimer)
+    this.activityTimer = null
+    this.scheduler?.plan()
+    this.notificationScheduler?.plan()
+    this.emit('scheduleChanged')
+    this.emit('updateToolTip')
+  }
+
+  watchForActivity () {
+    if (this.activityTimer || !this.waitingForActivity) return
+    this.activityTimer = setInterval(() => {
+      const observed = this.naturalBreaksManager.systemIdleTime
+      if (observed < this.lastObservedIdle && !this.naturalBreaksManager.isLocked) this.resumeOnActivity()
+      this.lastObservedIdle = observed
+    }, this.settings.get('naturalBreaksCheckInterval') || 2000)
+  }
+
   nextBreak () {
-    const idle = this.naturalBreaksManager.idleTime
-    const period = this.idlePeriod || (this._isFinishingBreak && idle >= this.naturalBreaksManager.minimumIdle ? this.captureIdle(idle) : null)
+    const idle = this.naturalBreaksManager.usingNaturalBreaks ? this.naturalBreaksManager.idleTime : this.naturalBreaksManager.systemIdleTime
+    const afterBreak = this._isFinishingBreak && this.breakWindowOpenedAt !== null
+    const idleStartedDuringBreak = afterBreak && idle > 0 && Date.now() - idle >= this.breakWindowOpenedAt - 1000
+    const period = this.idlePeriod || (this.naturalBreaksManager.usingNaturalBreaks && afterBreak && idle >= this.naturalBreaksManager.minimumIdle && !idleStartedDuringBreak ? this.captureIdle(idle) : null)
+    const holdForActivity = afterBreak && idle > 0 && (period?.startedDuringBreak || !period)
+    if (afterBreak && (this.fullIdleResetPending || (idleStartedDuringBreak && this.isFullIdle(idle)))) {
+      this.breakNumber = 0
+      this.longBreakNumber = 0
+      this.fullIdleResetPending = false
+      this.fullIdleResetDone = holdForActivity
+      this.emit('idleSessionReset')
+    }
+    if (period?.startedDuringBreak) this.idlePeriod = null
     if (period && this._isFinishingBreak && larger(this._scheduledBreakType)) period.completed = true
+    this.breakWindowOpenedAt = null
     this.postponedReminder = false
     this.postponesNumber = 0
     if (this.scheduler) this.scheduler.cancel()
@@ -319,7 +407,13 @@ class BreaksPlanner extends EventEmitter {
       }
     }
     this.scheduler.plan()
-    if (period && (period.held || period.completed || idle >= this.naturalBreaksManager.minimumIdle)) {
+    if (holdForActivity) {
+      this.waitingForActivity = true
+      this.lastObservedIdle = idle
+      this.scheduler.suspend()
+      this.notificationScheduler?.suspend()
+      if (!this.naturalBreaksManager.usingNaturalBreaks) this.watchForActivity()
+    } else if (period && (period.held || period.completed || idle >= this.naturalBreaksManager.minimumIdle)) {
       period.held = false
       this.holdForIdle(period)
     }
@@ -338,6 +432,7 @@ class BreaksPlanner extends EventEmitter {
   postponeCurrentBreak () {
     const scheduledBreakType = this._scheduledBreakType
     if (larger(scheduledBreakType) && !this.canPostponeLargerBreak) return false
+    this.breakWindowOpenedAt = null
     this.scheduler.cancel()
     this.postponesNumber += 1
     this.postponedReminder = true
@@ -423,6 +518,12 @@ class BreaksPlanner extends EventEmitter {
     this.reminderLead = 0
     this.postponedReminder = false
     this.idlePeriod = null
+    this.breakWindowOpenedAt = null
+    this.waitingForActivity = false
+    this.fullIdleResetPending = false
+    this.fullIdleResetDone = false
+    clearInterval(this.activityTimer)
+    this.activityTimer = null
     this.scheduler?.cancel()
     this.breakNumber = 0
     this.longBreakNumber = 0
@@ -493,9 +594,12 @@ class BreaksPlanner extends EventEmitter {
 
   naturalBreaks (shouldUse) {
     if (shouldUse) {
+      clearInterval(this.activityTimer)
+      this.activityTimer = null
       this.naturalBreaksManager.start()
     } else {
       this.naturalBreaksManager.stop()
+      this.watchForActivity()
     }
   }
 

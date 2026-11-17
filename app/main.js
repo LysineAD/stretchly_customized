@@ -453,6 +453,11 @@ async function initialize (isAppStart = true) {
       period.debtDurations = next.map(entry => entry.duration)
       statistics.debt.shares(period.debtDurations)
     })
+    breakPlanner.on('idleSessionReset', () => {
+      statistics.session.finishIdleSession()
+      statistics.debt.replan()
+      statistics.onChange()
+    })
     breakPlanner.on('resumeWaitingBreak', () => breakStartController.resume())
     breakPlanner.on('closeForIdle', ({ completed, idleTime }) => {
       if (idleTime) statistics.observeIdle(idleTime, breakPlanner.naturalBreaksManager.thresholds.short)
@@ -948,6 +953,7 @@ function startMicrobreak () {
   const fullscreen = settings.get('fullscreen') && !settings.get('compactBreaks')
 
   statistics.offer({ type: 'mini' })
+  breakPlanner.markBreakWindowOpened()
   const automaticStarted = Date.now()
   const modalPath = 'file://' + join(__dirname, '/microbreak.html')
   microbreakWins = []

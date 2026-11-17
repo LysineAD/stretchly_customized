@@ -74,7 +74,7 @@ try {
         microbreakInterval: 20 * minute, breakInterval: 1,
         breakDuration: 4 * minute, extendedBreak: true,
         extendedBreakDuration: 12 * minute, extendedBreakInterval: 2,
-        naturalBreaksCheckInterval: 2000
+        naturalBreaksCheckInterval: 10
       }
       const settings = { get: key => values[key] }
       const reports = {}
@@ -90,24 +90,37 @@ try {
         if (Math.abs(reports.rate - cycleRest / cycleWork) > 1e-9) {
           throw Error('packaged break debt rate is not the schedule’s own larger-break average')
         }
-        let finished = null
-        planner.on('idleRecoveryFinished', payload => { finished = payload })
+        let closed = false
+        let resets = 0
+        planner.on('closeForIdle', () => { closed = true })
+        planner.on('idleSessionReset', () => { resets++ })
+        let simulatedIdle = 0
+        planner.naturalBreaksManager.usingNaturalBreaks = true
+        Object.defineProperty(planner.naturalBreaksManager, 'idleTime', { get: () => simulatedIdle })
+        Object.defineProperty(planner.naturalBreaksManager, 'systemIdleTime', { get: () => simulatedIdle })
+        Object.defineProperty(planner.naturalBreaksManager, 'isLocked', { get: () => false })
         planner.on('startBreak', () => planner.emit('breakStarted', false, values.breakDuration))
         planner.nextBreak()
         planner.nextBreak()
         planner.emit('startBreak')
-        planner.naturalBreaksManager.emit('idleTimeObserved', 4 * minute, 0)
-        if (!planner.idlePeriod?.duringBreak) throw Error('idle was not captured during the running Long break')
+        planner.breakWindowOpenedAt = Date.now() - 5 * minute
+        simulatedIdle = 4 * minute
+        planner.naturalBreaksManager.emit('idleTimeObserved', simulatedIdle, 0)
+        if (closed || planner.scheduler.reference !== 'finishBreak') throw Error('idle closed an ongoing Long break')
         planner.nextBreak()
-        if (!planner.idlePeriod?.completed) throw Error('the break ending while away was not recorded')
-        planner.naturalBreaksManager.emit('idlePeriodFinished', 6 * minute, Date.now() + 6 * minute)
-        if (!finished?.fulfilled) throw Error('AFK covering the running break was not fulfilled')
-        reports.afk = { fulfilled: finished.fulfilled, reset: finished.reset, timeToNextBreak: planner.timeToNextBreak }
+        if (!planner.waitingForActivity || planner.scheduler.timer !== null) throw Error('next interval did not wait for activity')
+        simulatedIdle = 12 * minute
+        planner.naturalBreaksManager.emit('idleTimeObserved', simulatedIdle, 4 * minute)
+        if (resets !== 1 || !planner.waitingForActivity) throw Error('Extended-length idle did not reset the held session')
+        simulatedIdle = 0
+        planner.naturalBreaksManager.emit('idleTimeObserved', simulatedIdle, 12 * minute)
+        if (planner.waitingForActivity || planner.scheduler.timer === null) throw Error('next interval did not resume on activity')
+        reports.afk = { closed, resets, resumed: !planner.waitingForActivity, timeToNextBreak: planner.timeToNextBreak }
         if (Math.abs(planner.timeToNextBreak - 20 * minute) > 1000) {
           throw Error('the next Mini interval did not restart in full on return')
         }
       } finally {
-        planner.scheduler?.cancel()
+        planner.clear()
         planner.naturalBreaksManager.stop()
         planner.dndManager.stop()
         planner.appExclusionsManager.stop()
@@ -153,7 +166,9 @@ try {
   if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text)
   assert.equal(result.result.value.thresholds.short, 240000)
   assert.ok(Math.abs(result.result.value.rate - 0.2) < 1e-9)
-  assert.equal(result.result.value.afk.fulfilled, true)
+  assert.equal(result.result.value.afk.closed, false)
+  assert.equal(result.result.value.afk.resets, 1)
+  assert.equal(result.result.value.afk.resumed, true)
   assert.equal(result.result.value.skip.after, result.result.value.skip.before - 30000)
   assert.equal(result.result.value.debt.before, result.result.value.debt.after)
   assert.ok(result.result.value.debt.payment <= 360000)

@@ -87,13 +87,13 @@ describe('AFK that outlasts a running Long break (Mini breaks enabled)', () => {
     vi.advanceTimersByTime(4000)
   }
 
-  it('fulfills the break and restarts a full 20-minute Mini interval on return', () => {
+  it('finishes the full break and waits for activity before starting the next Mini interval', () => {
     leaveDuringLongBreak()
     vi.advanceTimersByTime(6 * minute)
-    expect(planner.idlePeriod.completed).toBe(true)
+    expect(planner.waitingForActivity).toBe(true)
     expect(planner._scheduledBreakType).toBe('microbreak')
     comeBack()
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true, reset: false }))
+    expect(planner.waitingForActivity).toBe(false)
     expect(planner._scheduledBreakType).toBe('microbreak')
     expect(planner.timeToNextBreak).toBe(20 * minute)
     expect(planner.longBreakNumber).toBe(1)
@@ -103,15 +103,16 @@ describe('AFK that outlasts a running Long break (Mini breaks enabled)', () => {
     leaveDuringLongBreak()
     // The Long break ends while away and the successor Mini is suspended.
     vi.advanceTimersByTime(4 * minute)
-    expect(planner.idlePeriod.completed).toBe(true)
+    expect(planner.waitingForActivity).toBe(true)
     // A screen-lock / session glitch restarts the OS idle counter from zero.
     idle.started = Date.now()
     idle.locked = true
     vi.advanceTimersByTime(2 * minute + 2000)
+    expect(planner.waitingForActivity).toBe(true)
     idle.locked = false
     comeBack()
     expect(managerReturns).toHaveBeenCalledOnce()
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true, reset: false }))
+    expect(planner.waitingForActivity).toBe(false)
     expect(planner.timeToNextBreak).toBe(20 * minute)
   })
 

@@ -56,6 +56,10 @@ class NaturalBreaksManager extends EventEmitter {
     return 0
   }
 
+  get systemIdleTime () {
+    return powerMonitor.getSystemIdleTime() * 1000
+  }
+
   get thresholds () {
     if (this.settings.get('break')) {
       return {
@@ -71,6 +75,10 @@ class NaturalBreaksManager extends EventEmitter {
 
   get minimumIdle () {
     return Math.min(20000, this.thresholds.short, this.thresholds.long)
+  }
+
+  get isLocked () {
+    return powerMonitor.getSystemIdleState?.(1) === 'locked'
   }
 
   _checkIdleTime () {

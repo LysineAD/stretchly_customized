@@ -61,6 +61,17 @@ describe('debt events', () => {
     expect(restored.debt.amount).toBeCloseTo((2 + 10 / 6) * minute)
   })
 
+  it('preserves all unpaid debt when a long idle resets the schedule', () => {
+    const session = new DebtSession({ amount: 5 * minute })
+    session.debt.shares([4, 4, 12].map(value => value * minute))
+    session.recordWork(25 * minute, rate)
+    session.finishIdleSession()
+    session.debt.replan()
+    expect(session.debt.amount).toBe(5 * minute)
+    expect(session.work).toBe(0)
+    expect(session.cycleWork).toBe(0)
+  })
+
   it('preserves the assigned later shares through restart', () => {
     const original = new DebtSession({ amount: 5 * minute })
     original.debt.shares([4, 4, 12].map(value => value * minute))

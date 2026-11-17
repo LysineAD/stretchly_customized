@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+- Keep breaks open for their full timer when idle starts after their window opens; pause the next countdown until activity and reset the session after an Extended-length absence without erasing unpaid debt.
+
 - Replace the signed-balance debt model with event-based Postpone, Skip and Reset accounting. Preserve unpaid debt and assigned shares; qualifying idle pays only the immediate break’s extra share. Earlier entries below describe superseded implementations.
 
 - Fix idle return detection, overlapping postponement debt, idle corrections to committed debt, skipped or prematurely finished break accounting, cadence-change forecasts, and postponement limits after Skip to a different break. An idle-counter reset is held open when Windows reports the session locked; an unlocked reset cannot be distinguished from a real return using the idle counter alone.

@@ -61,7 +61,7 @@ describe('AFK recovery for scheduled breaks', () => {
     vi.advanceTimersByTime(4000)
   }
 
-  it('closes a running Long break when idle fulfills its base before return', () => {
+  it('keeps an idle Long break open until its full duration including debt finishes', () => {
     values.breakDuration = 4 * minute
     const close = vi.fn()
     planner.on('closeForIdle', close)
@@ -70,14 +70,12 @@ describe('AFK recovery for scheduled breaks', () => {
     vi.advanceTimersByTime(41 * minute)
     idle.started = Date.now()
     vi.advanceTimersByTime(4 * minute + 4000)
-    expect(close).toHaveBeenCalledWith(expect.objectContaining({ completed: true }))
-    expect(close).toHaveBeenCalledOnce()
-    comeBack()
-    expect(close).toHaveBeenCalledOnce()
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true }))
+    expect(close).not.toHaveBeenCalled()
+    expect(planner.scheduler.reference).toBe('finishBreak')
+    expect(planner.scheduler.timeLeft).toBeGreaterThan(4 * minute)
   })
 
-  it('resets the interval after short idle during an Extended break without fulfilling it', () => {
+  it('keeps an Extended break running when idle begins after it opens', () => {
     values.breakDuration = 4 * minute
     values.extendedBreak = true
     values.extendedBreakDuration = 12 * minute
@@ -89,10 +87,167 @@ describe('AFK recovery for scheduled breaks', () => {
     vi.advanceTimersByTime(41 * minute)
     idle.started = Date.now()
     vi.advanceTimersByTime(4 * minute)
+    expect(close).not.toHaveBeenCalled()
+    expect(planner.scheduler.reference).toBe('finishExtendedBreak')
+    expect(planner.scheduler.timeLeft).toBeGreaterThan(6 * minute)
+  })
+
+  it('resets the full schedule when idle during a Long break reaches the Extended threshold', () => {
+    values.breakDuration = 4 * minute
+    values.extendedBreak = true
+    values.extendedBreakDuration = 12 * minute
+    values.extendedBreakInterval = 3
+    const reset = vi.fn()
+    planner.on('idleSessionReset', reset)
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 4 * minute))
+    planner.on('finishBreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(4 * minute)
+    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.longBreakNumber).toBe(2)
+    vi.advanceTimersByTime(8 * minute + 4000)
+    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.longBreakNumber).toBe(1)
+    vi.advanceTimersByTime(2 * minute)
+    expect(reset).toHaveBeenCalledOnce()
     comeBack()
-    expect(close).toHaveBeenCalledWith({ completed: false })
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: false, reset: false }))
+    expect(planner.timeToNextBreak).toBeGreaterThan(39 * minute)
+  })
+
+  it('defers a full idle reset until an Extended break including debt finishes', () => {
+    values.breakDuration = 4 * minute
+    values.extendedBreak = true
+    values.extendedBreakDuration = 12 * minute
+    values.extendedBreakInterval = 3
+    const close = vi.fn()
+    planner.on('closeForIdle', close)
+    planner.on('startExtendedBreak', () => planner.emit('extendedBreakStarted', false, 15 * minute))
+    planner.on('finishExtendedBreak', () => planner.nextBreak())
+    planner.longBreakNumber = 2
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(12 * minute + 4000)
+    expect(close).not.toHaveBeenCalled()
+    expect(planner.scheduler.reference).toBe('finishExtendedBreak')
+    expect(planner.longBreakNumber).toBe(3)
+    vi.advanceTimersByTime(3 * minute)
+    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.longBreakNumber).toBe(1)
+  })
+
+  it('keeps a full idle reset pending if the user returns before the break ends', () => {
+    values.breakDuration = 4 * minute
+    values.extendedBreak = true
+    values.extendedBreakDuration = 12 * minute
+    values.extendedBreakInterval = 3
+    const reset = vi.fn()
+    planner.on('idleSessionReset', reset)
+    planner.on('startExtendedBreak', () => planner.emit('extendedBreakStarted', false, 15 * minute))
+    planner.on('finishExtendedBreak', () => planner.nextBreak())
+    planner.longBreakNumber = 2
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(12 * minute + 4000)
+    comeBack()
+    expect(reset).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(3 * minute)
+    expect(reset).toHaveBeenCalledOnce()
+    expect(planner.waitingForActivity).toBe(false)
+    expect(planner.longBreakNumber).toBe(1)
+  })
+
+  it('does not pause the auto-start wait when idle begins after the window opens', () => {
+    values.breakDuration = 10000
+    planner.nextBreak()
+    planner.waitForBreakStart('long')
+    const pause = vi.fn()
+    planner.on('idleRecoveryStarted', pause)
+    idle.started = Date.now() + 1000
+    vi.advanceTimersByTime(14000)
+    expect(pause).not.toHaveBeenCalled()
+    expect(planner.scheduler.waitingForStart).toBe(true)
+  })
+
+  it('holds the next countdown after a break even for idle shorter than the normal threshold', () => {
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
+    planner.on('finishBreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(9000)
+    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.scheduler.timer).toBeNull()
+    vi.advanceTimersByTime(30000)
     expect(planner.timeToNextBreak).toBe(40 * minute)
+    comeBack()
+    expect(planner.waitingForActivity).toBe(false)
+    expect(planner.scheduler.timer).not.toBeNull()
+    expect(planner.timeToNextBreak).toBeGreaterThan(39 * minute)
+  })
+
+  it('holds the next countdown after an idle Mini break', () => {
+    values.microbreak = true
+    values.manualBreakStart = false
+    values.microbreakNotification = false
+    planner.on('startMicrobreak', () => planner.emit('microbreakStarted', false))
+    planner.on('finishMicrobreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(20 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(values.microbreakDuration - 1000)
+    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.scheduler.timer).toBeNull()
+    comeBack()
+    expect(planner.waitingForActivity).toBe(false)
+    expect(planner.scheduler.timer).not.toBeNull()
+  })
+
+  it('waits for activity after a break even when natural breaks are disabled', () => {
+    planner.naturalBreaks(false)
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
+    planner.on('finishBreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(9000)
+    expect(planner.waitingForActivity).toBe(true)
+    vi.advanceTimersByTime(30000)
+    expect(planner.timeToNextBreak).toBe(40 * minute)
+    idle.started = null
+    vi.advanceTimersByTime(2000)
+    expect(planner.waitingForActivity).toBe(false)
+    expect(planner.scheduler.timer).not.toBeNull()
+  })
+
+  it('keeps waiting if natural-break monitoring is disabled during the wait', () => {
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
+    planner.on('finishBreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(9000)
+    expect(planner.waitingForActivity).toBe(true)
+    planner.naturalBreaks(false)
+    idle.started = null
+    vi.advanceTimersByTime(2000)
+    expect(planner.waitingForActivity).toBe(false)
+  })
+
+  it('still fulfills a break using idle that began before its window opened', () => {
+    values.breakDuration = 4 * minute
+    const close = vi.fn()
+    planner.on('closeForIdle', close)
+    planner.nextBreak()
+    idle.started = Date.now()
+    vi.advanceTimersByTime(30000)
+    planner.waitForBreakStart('long')
+    planner.emit('breakStarted', false, 10 * minute)
+    vi.advanceTimersByTime(3.5 * minute + 4000)
+    expect(close).toHaveBeenCalledWith(expect.objectContaining({ completed: true }))
   })
 
   it('uses the saved durations for AFK qualification', () => {
@@ -138,14 +293,14 @@ describe('AFK recovery for scheduled breaks', () => {
     expect(planner.longBreakNumber).toBe(1)
   })
 
-  it('fulfills a running Long when AFK outlasts it, without fulfilling a second break', () => {
+  it('finishes a running Long and starts the next interval only after return', () => {
     planner.on('startBreak', () => planner.emit('breakStarted', false))
     planner.on('finishBreak', () => planner.nextBreak())
     planner.nextBreak()
     leave(41, 8)
     expect(planner.scheduler.timer).toBeNull()
     comeBack()
-    expect(finished).toHaveBeenCalledWith(expect.objectContaining({ fulfilled: true, reset: false }))
+    expect(planner.waitingForActivity).toBe(false)
     expect(planner.longBreakNumber).toBe(2)
     expect(planner.timeToNextBreak).toBe(40 * minute)
   })
