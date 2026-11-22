@@ -56,10 +56,6 @@ class NaturalBreaksManager extends EventEmitter {
     return 0
   }
 
-  get systemIdleTime () {
-    return powerMonitor.getSystemIdleTime() * 1000
-  }
-
   get thresholds () {
     if (this.settings.get('break')) {
       return {

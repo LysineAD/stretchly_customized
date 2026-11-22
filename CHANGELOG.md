@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+- Keep breaks running without mouse activity when idle monitoring is disabled, and prevent a stale activity wait from restarting a cancelled scheduler.
+
 - Keep breaks open for their full timer when idle starts after their window opens; pause the next countdown until activity and reset the session after an Extended-length absence without erasing unpaid debt.
 
 - Replace the signed-balance debt model with event-based Postpone, Skip and Reset accounting. Preserve unpaid debt and assigned shares; qualifying idle pays only the immediate break’s extra share. Earlier entries below describe superseded implementations.

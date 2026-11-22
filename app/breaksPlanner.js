@@ -28,7 +28,6 @@ class BreaksPlanner extends EventEmitter {
     this.waitingForActivity = false
     this.fullIdleResetPending = false
     this.fullIdleResetDone = false
-    this.activityTimer = null
     this.lastObservedIdle = 0
     this.naturalBreaksManager = new NaturalBreaksManager(settings)
     this.dndManager = new DndManager(settings)
@@ -289,6 +288,7 @@ class BreaksPlanner extends EventEmitter {
     if (this.isPaused || this._isFinishingBreak || !this.scheduler?.reference || this.idlePeriod?.held) return
     const next = this.largerBreaks(1)[0]
     if (!next) return
+    this.waitingForActivity = false
     this.idlePeriod = null
     this.scheduler.cancel()
     this.breakNumber = this.settings.get('breakInterval') + 1
@@ -338,25 +338,14 @@ class BreaksPlanner extends EventEmitter {
     if (!this.waitingForActivity) return
     this.waitingForActivity = false
     this.fullIdleResetDone = false
-    clearInterval(this.activityTimer)
-    this.activityTimer = null
-    this.scheduler?.plan()
-    this.notificationScheduler?.plan()
+    if (this.scheduler?.suspendedTimeLeft !== null && typeof this.scheduler?.func === 'function') this.scheduler.plan()
+    if (this.notificationScheduler?.suspendedTimeLeft !== null && typeof this.notificationScheduler?.func === 'function') this.notificationScheduler.plan()
     this.emit('scheduleChanged')
     this.emit('updateToolTip')
   }
 
-  watchForActivity () {
-    if (this.activityTimer || !this.waitingForActivity) return
-    this.activityTimer = setInterval(() => {
-      const observed = this.naturalBreaksManager.systemIdleTime
-      if (observed < this.lastObservedIdle && !this.naturalBreaksManager.isLocked) this.resumeOnActivity()
-      this.lastObservedIdle = observed
-    }, this.settings.get('naturalBreaksCheckInterval') || 2000)
-  }
-
   nextBreak () {
-    const idle = this.naturalBreaksManager.usingNaturalBreaks ? this.naturalBreaksManager.idleTime : this.naturalBreaksManager.systemIdleTime
+    const idle = this.naturalBreaksManager.idleTime
     const afterBreak = this._isFinishingBreak && this.breakWindowOpenedAt !== null
     const idleStartedDuringBreak = afterBreak && idle > 0 && Date.now() - idle >= this.breakWindowOpenedAt - 1000
     const period = this.idlePeriod || (this.naturalBreaksManager.usingNaturalBreaks && afterBreak && idle >= this.naturalBreaksManager.minimumIdle && !idleStartedDuringBreak ? this.captureIdle(idle) : null)
@@ -412,7 +401,6 @@ class BreaksPlanner extends EventEmitter {
       this.lastObservedIdle = idle
       this.scheduler.suspend()
       this.notificationScheduler?.suspend()
-      if (!this.naturalBreaksManager.usingNaturalBreaks) this.watchForActivity()
     } else if (period && (period.held || period.completed || idle >= this.naturalBreaksManager.minimumIdle)) {
       period.held = false
       this.holdForIdle(period)
@@ -447,6 +435,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToMicrobreak (delay = 0) {
+    this.waitingForActivity = false
     this.postponesNumber = 0
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
@@ -469,6 +458,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToBreak (delay = 0) {
+    this.waitingForActivity = false
     this.postponesNumber = 0
     const next = this.largerBreaks(1)[0]
     const pastCurrent = this._isFinishingBreak && larger(this._scheduledBreakType)
@@ -492,6 +482,7 @@ class BreaksPlanner extends EventEmitter {
   }
 
   skipToExtendedBreak (delay = 0) {
+    this.waitingForActivity = false
     this.postponesNumber = 0
     this.idlePeriod = null
     this.notificationScheduler?.cancel()
@@ -522,8 +513,6 @@ class BreaksPlanner extends EventEmitter {
     this.waitingForActivity = false
     this.fullIdleResetPending = false
     this.fullIdleResetDone = false
-    clearInterval(this.activityTimer)
-    this.activityTimer = null
     this.scheduler?.cancel()
     this.breakNumber = 0
     this.longBreakNumber = 0
@@ -594,12 +583,10 @@ class BreaksPlanner extends EventEmitter {
 
   naturalBreaks (shouldUse) {
     if (shouldUse) {
-      clearInterval(this.activityTimer)
-      this.activityTimer = null
       this.naturalBreaksManager.start()
     } else {
       this.naturalBreaksManager.stop()
-      this.watchForActivity()
+      this.resumeOnActivity()
     }
   }
 

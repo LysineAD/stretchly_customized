@@ -206,7 +206,7 @@ describe('AFK recovery for scheduled breaks', () => {
     expect(planner.scheduler.timer).not.toBeNull()
   })
 
-  it('waits for activity after a break even when natural breaks are disabled', () => {
+  it('continues automatically after a break when natural breaks are disabled', () => {
     planner.naturalBreaks(false)
     planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
     planner.on('finishBreak', () => planner.nextBreak())
@@ -214,16 +214,26 @@ describe('AFK recovery for scheduled breaks', () => {
     vi.advanceTimersByTime(40 * minute + 1000)
     idle.started = Date.now()
     vi.advanceTimersByTime(9000)
-    expect(planner.waitingForActivity).toBe(true)
+    expect(planner.waitingForActivity).toBe(false)
     vi.advanceTimersByTime(30000)
-    expect(planner.timeToNextBreak).toBe(40 * minute)
-    idle.started = null
-    vi.advanceTimersByTime(2000)
+    expect(planner.timeToNextBreak).toBeLessThan(40 * minute)
+    expect(planner.scheduler.timer).not.toBeNull()
+  })
+
+  it('immediately resumes if natural-break monitoring is disabled during the wait', () => {
+    planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
+    planner.on('finishBreak', () => planner.nextBreak())
+    planner.nextBreak()
+    vi.advanceTimersByTime(40 * minute + 1000)
+    idle.started = Date.now()
+    vi.advanceTimersByTime(9000)
+    expect(planner.waitingForActivity).toBe(true)
+    planner.naturalBreaks(false)
     expect(planner.waitingForActivity).toBe(false)
     expect(planner.scheduler.timer).not.toBeNull()
   })
 
-  it('keeps waiting if natural-break monitoring is disabled during the wait', () => {
+  it.each(['skipToMicrobreak', 'skipToBreak', 'skipToExtendedBreak'])('%s clears a pending activity wait', action => {
     planner.on('startBreak', () => planner.emit('breakStarted', false, 10000))
     planner.on('finishBreak', () => planner.nextBreak())
     planner.nextBreak()
@@ -231,9 +241,16 @@ describe('AFK recovery for scheduled breaks', () => {
     idle.started = Date.now()
     vi.advanceTimersByTime(9000)
     expect(planner.waitingForActivity).toBe(true)
-    planner.naturalBreaks(false)
-    idle.started = null
-    vi.advanceTimersByTime(2000)
+    planner[action](10000)
+    expect(planner.waitingForActivity).toBe(false)
+    expect(() => planner.resumeOnActivity()).not.toThrow()
+  })
+
+  it('does not restart a cancelled scheduler on a late activity event', () => {
+    planner.nextBreak()
+    planner.waitingForActivity = true
+    planner.scheduler.cancel()
+    expect(() => planner.resumeOnActivity()).not.toThrow()
     expect(planner.waitingForActivity).toBe(false)
   })
 
